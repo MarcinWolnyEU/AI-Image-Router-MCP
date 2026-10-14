@@ -1,12 +1,12 @@
 import { createHash, type Hash } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { resolvePath } from '../config/paths.js';
 
-export type BgModelKey = 'birefnet-general' | 'birefnet-massive' | 'bria-rmbg' | 'isnet-general-use' | 'ben2-base';
+export type BgModelKey = 'birefnet-general' | 'birefnet-massive' | 'bria-rmbg' | 'isnet-general-use' | 'ben2-base' | 'finegrain-box-segmenter';
 
 /** Execution providers we describe usage for (a subset of the config enum). */
 export type BgExecutionProvider = 'cpu' | 'dml' | 'webgpu' | 'cuda' | 'coreml';
@@ -62,7 +62,7 @@ export interface BgModelSpec {
   tta?: boolean;
   /**
    * Confidence-hysteresis cleanup seed (the "high" threshold, 0..1). When > 0, connected mask
-   * regions that never reach this confidence are dropped (see `postprocess.hysteresisCleanup`) —
+   * regions that never reach this confidence are dropped (see `postprocess.hysteresisCleanup`):
    * removes floating low-confidence "ghost panel" blobs while keeping soft edges and confidently
    * segmented detached subjects. The connectivity "low" threshold is the `alphaFloor`. 0/undefined
    * = off. Env `BG_HYST_SEED` overrides (0 disables).
@@ -75,7 +75,7 @@ export interface BgModelSpec {
    */
   needsSigmoid: boolean;
   /**
-   * BiRefNet-architecture models (incl. bria-rmbg) can't run on WebGPU as-is — their wide
+   * BiRefNet-architecture models (incl. bria-rmbg) can't run on WebGPU as-is; their wide
    * Split/Concat exceed the per-shader storage-buffer limit. When true and the configured EP is
    * WebGPU, the runtime auto-generates + loads a cascaded `<file>-webgpu.onnx` variant (see
    * `src/bgremoval/cascade.ts`). IS-Net (isnet) runs on WebGPU directly, so it stays false.
@@ -160,7 +160,7 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
   'isnet-general-use': {
     key: 'isnet-general-use',
     label: 'IS-Net general',
-    blurb: 'IS-Net model — runs on GPU (DirectML and WebGPU), fast, low memory; edges a touch softer and might remove too much of the image. Commercial use allowed. Originating from UAE-Swiss-Chinese research group.',
+    blurb: 'IS-Net model: runs on GPU (DirectML and WebGPU), fast, low memory; edges a touch softer and might remove too much of the image. Commercial use allowed. Originating from UAE-Swiss-Chinese research group.',
     url: 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx',
     filename: 'isnet-general-use.onnx',
     hash: { algo: 'md5', value: 'fc16ebd8b0c10d971d3513d564d01e29' },
@@ -177,9 +177,9 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
   'ben2-base': {
     key: 'ben2-base',
     label: 'BEN2 Base',
-    blurb: 'BEN2 confidence-guided matting — strong on hair/fine edges, competitive with/above RMBG-2.0. MIT-licensed, free for commercial use, from Prama LLC (US). Sharpest at ≤1024×1024 — it runs at a fixed 1024² internally, so larger inputs are downscaled and the mask upscaled back (some softening on big images).',
+    blurb: 'BEN2 confidence-guided matting: strong on hair/fine edges, competitive with/above RMBG-2.0. MIT-licensed, free for commercial use, from Prama LLC (US). Sharpest at ≤1024×1024, since it runs at a fixed 1024² internally, so larger inputs are downscaled and the mask upscaled back (some softening on big images).',
     // PramaLLC's official ONNX export. It's a MIXED-precision graph (188 fp32 + 325 fp16 weights)
-    // and — importantly — its OUTPUT tensor is declared **float16**, so onnxruntime-node hands the
+    // and its OUTPUT tensor is declared **float16**, so onnxruntime-node hands the
     // result back as a Uint16Array of raw fp16 bits. `birefnet.ts` decodes those bits to fp32
     // (`half2float`) before postprocess; reading them as floats directly (a bare `as Float32Array`)
     // miscolours the low end of the mask and min-max then amplifies it into window-grid "seams".
@@ -195,7 +195,7 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
     needsSigmoid: false,
     // No postprocess mitigations by default. `alphaFloor` (black-point lift), `tta` (flip
     // test-time augmentation, ~2× inference) and `hysteresisSeed` (drop low-confidence blobs)
-    // were originally added to fight the "seams"/haze/ghost-panels — but those were the fp16
+    // were originally added to fight the "seams"/haze/ghost-panels, but those were the fp16
     // output-decode bug (now fixed in birefnet.ts), not real model artifacts. With the bug gone
     // the raw mask is already clean on flat backgrounds (no halo) AND these mitigations actively
     // *erode* fine detail (alphaFloor/hysteresis thin hair wisps and ship rigging), so they cost
@@ -205,9 +205,35 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
     // Unlike the BiRefNet family, BEN2 runs on every provider as-is (no wide Split/Concat
     // that trips WebGPU's storage-buffer limit), so no cascade variant is needed.
     usage: {
-      cpu: { runs: true, ramMB: 4096, note: 'CPU forward pass ~18 s (×2 if flip-TTA re-enabled via BG_TTA).' },
-      dml: { runs: true, ramMB: 1024, vramMB: 3712, note: 'Runs on DirectML (~0.8 s/pass; ×2 if flip-TTA re-enabled).' },
-      webgpu: { runs: true, ramMB: 1024, vramMB: 3840, note: 'Runs on WebGPU directly (~13 s; ×2 if flip-TTA re-enabled).' },
+      cpu: { runs: true, ramMB: 4096, note: 'CPU forward pass ~11 s (×2 if flip-TTA re-enabled via BG_TTA).' },
+      dml: { runs: true, ramMB: 1024, vramMB: 3712, note: 'Runs on DirectML (~0.4-0.7 s/pass after a ~4 s session load; ×2 if flip-TTA re-enabled).' },
+      webgpu: { runs: true, ramMB: 1024, vramMB: 3840, note: 'Runs on WebGPU directly (~0.5 s/pass; the first call ~6 s for shader compile; ×2 if flip-TTA re-enabled).' },
+    },
+  },
+  'finegrain-box-segmenter': {
+    key: 'finegrain-box-segmenter',
+    label: 'Finegrain box segmenter (INT8)',
+    blurb: 'MVANet (Swin-B) from Finegrain, int8-quantized with fp16 activations: ~117 MB download, ~1.2-1.6 GB VRAM, about a second per image on GPU. MIT-licensed, free for commercial use. Built for GPUs (DirectML, WebGPU, CUDA); on CPU it takes ~14 s per image.',
+    // MarcinEU's quantized ONNX of finegrain/finegrain-box-segmenter. Contract (model card):
+    // input [1,3,1024,1024] f32, torchvision-style /255 + ImageNet mean/std, output
+    // [1,1,1024,1024] f32 RAW LOGITS (apply sigmoid). Activations are fp16 internally but the
+    // graph's I/O stays f32, so no fp16 decode is needed (tensorToFloat32 passes it through).
+    // Low-memory graph rewrite: runs on CPU, DirectML, WebGPU (default limits) and CUDA as-is.
+    url: 'https://huggingface.co/MarcinEU/finegrain-box-segmenter-INT8-G128-sym-computeFP16-ONNX/resolve/main/onnx/model.onnx',
+    filename: 'finegrain-box-segmenter-int8.onnx',
+    hash: { algo: 'sha256', value: 'd75f5629325ae7c4a650d1b1c7478db861157ac2391b999cfbd8fdd1c1d7f78a' },
+    approxMB: 117, // 122_512_365 bytes
+    mean: IMAGENET_MEAN,
+    std: IMAGENET_STD,
+    scaleMode: 'div255',
+    needsSigmoid: true,
+    // Measured with scripts/ram-test.ts (2026-10-14, Windows 11, RTX 5070 Ti, ort-node 1.26): peak RSS delta
+    // 1.4 GB CPU / 0.8 GB DML / 0.4 GB WebGPU for ONE pass, rounded up (the model card notes the second CPU
+    // inference adds ~1 GB). VRAM is the nvidia-smi total-used delta.
+    usage: {
+      cpu: { runs: true, ramMB: 2048, note: 'CPU forward pass ~14 s (fp16 activations make CPU 1.5-1.8x slower than the fp32 build).' },
+      dml: { runs: true, ramMB: 1024, vramMB: 1578, note: 'Runs on DirectML (~0.2-0.5 s/pass once compiled; the first call is slower).' },
+      webgpu: { runs: true, ramMB: 1024, vramMB: 1206, note: 'Runs on WebGPU directly, default limits (~1 s/pass once compiled; the first call is slower).' },
     },
   },
 };
@@ -216,14 +242,7 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
 export const RAM_HEADROOM_MB = 512;
 
 /**
- * Free system RAM (MB) a model needs for the given execution provider — the empirical peak host
- * RAM (`usage[ep].ramMB`) plus headroom. On CPU the whole forward pass runs in host memory
- * (~7 GB peak for the 1024² BiRefNet/bria graphs); accelerated providers keep activations on the
- * GPU and only need enough host RAM to load the weights. (Kept here, free of onnxruntime imports,
- * so health/wizard can use it without loading the ORT native addon.)
- */
-/**
- * What the `executionProvider` setting means on this machine — the ONE resolution of `auto`,
+ * What the `executionProvider` setting means on this machine: the ONE resolution of `auto`,
  * shared by the runtime (`birefnet.ts`), the wizard and `health_status` (they used to disagree).
  * Windows → WebGPU: every model runs there (the BiRefNet family via its one-time cascaded copy),
  * while DirectML cannot run BiRefNet/bria at all and needs a ~6-min first-call compile for isnet.
@@ -270,6 +289,13 @@ export function plannedProviders(
   return { eps: [ep, 'cpu'] };
 }
 
+/**
+ * Free system RAM (MB) a model needs for the given execution provider: the empirical peak host
+ * RAM (`usage[ep].ramMB`) plus headroom. On CPU the whole forward pass runs in host memory
+ * (~7 GB peak for the 1024² BiRefNet/bria graphs); accelerated providers keep activations on the
+ * GPU and only need enough host RAM to load the weights. (Kept here, free of onnxruntime imports,
+ * so health/wizard can use it without loading the ORT native addon.)
+ */
 export function requiredFreeMB(spec: BgModelSpec, ep: string): number {
   const ramMB = spec.usage[ep as BgExecutionProvider]?.ramMB ?? (ep === 'cpu' ? 8192 : 2048);
   return ramMB + RAM_HEADROOM_MB;
@@ -315,8 +341,50 @@ function createDownloadMeter(spec: BgModelSpec, total: number, hash: Hash, onPro
 }
 
 /**
- * Ensure the given model's .onnx file is present locally (downloading + md5-verifying
- * if necessary). Returns the absolute path. Idempotent.
+ * The repo-root `config.json` URL for a Hugging Face file URL
+ * (`https://huggingface.co/<owner>/<repo>/resolve/<rev>/<path>`), or null for any other host.
+ * Hugging Face counts a model download only when `config.json` is requested, so a download
+ * that fetched just the .onnx would leave the model's owner without any trace of it.
+ */
+export function huggingFaceConfigUrl(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (u.hostname !== 'huggingface.co' && u.hostname !== 'www.huggingface.co') return null;
+  const m = /^\/([^/]+)\/([^/]+)\/resolve\/([^/]+)\/.+/.exec(u.pathname);
+  return m ? `https://huggingface.co/${m[1]}/${m[2]}/resolve/${m[3]}/config.json` : null;
+}
+
+/**
+ * Fetch the model repo's `config.json` next to the model (overwriting whatever a previous
+ * Hugging Face model left there) so Hugging Face registers the download. Best-effort: the
+ * model is already downloaded and verified, so a repo without a config.json, or a network
+ * hiccup, is reported but never fails the download.
+ */
+async function fetchHuggingFaceConfig(spec: BgModelSpec, dir: string, onProgress?: DownloadProgress): Promise<void> {
+  const configUrl = huggingFaceConfigUrl(spec.url);
+  if (!configUrl) return;
+  const target = join(dir, 'config.json');
+  const tmp = `${target}.part`;
+  try {
+    const res = await fetch(configUrl, { redirect: 'follow', signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await writeFile(tmp, Buffer.from(await res.arrayBuffer()));
+    await rename(tmp, target);
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {});
+    onProgress?.({ phase: 'done', message: `Could not fetch ${configUrl} (${(err as Error).message}); the model itself is fine.` });
+  }
+}
+
+/**
+ * Ensure the given model's .onnx file is present locally (downloading + checksum-verifying
+ * if necessary). Returns the absolute path. Idempotent. A model hosted on Hugging Face also
+ * gets its repo's `config.json` fetched into the same directory after a fresh download
+ * (see `fetchHuggingFaceConfig`).
  */
 export async function ensureModelFile(spec: BgModelSpec, modelsDir: string, onProgress?: DownloadProgress): Promise<string> {
   const dir = resolvePath(modelsDir);
@@ -352,6 +420,7 @@ export async function ensureModelFile(spec: BgModelSpec, modelsDir: string, onPr
     throw new Error(`Checksum mismatch for ${spec.filename}: expected ${spec.hash.algo}:${spec.hash.value}, got ${digest}. Download may be corrupt.`);
   }
   await rename(tmpPath, finalPath);
+  await fetchHuggingFaceConfig(spec, dir, onProgress);
   onProgress?.({ phase: 'done', message: `Downloaded and verified ${spec.filename}.` });
   return finalPath;
 }

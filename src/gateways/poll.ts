@@ -3,7 +3,7 @@
  * check the abort signal, run one status check, back off by +1 s up to a cap, give
  * up at a deadline. What counts as finished / failed / progress is the caller's
  * `step` (it reports progress, throws on a terminal failure, and returns the final
- * value once done) — each gateway's status vocabulary differs and stays with it.
+ * value once done), each gateway's status vocabulary differs and stays with it.
  */
 export interface PollLoop<R> {
   /** Total time to keep polling. */

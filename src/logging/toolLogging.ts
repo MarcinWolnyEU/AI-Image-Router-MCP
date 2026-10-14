@@ -22,7 +22,7 @@ function logToolResponse(toolName: string, start: number, result: unknown, ctx: 
     ...ctx,
   };
   // A tool that caught its own failure returns { isError: true } rather than
-  // throwing — log it at `error` level so severity isn't lost.
+  // throwing, log it at `error` level so severity isn't lost.
   if (isError) runtime.logger?.error(`tool:response ${toolName}`, meta);
   else runtime.logger?.info(`tool:response ${toolName}`, meta);
 }
@@ -40,9 +40,9 @@ function logToolThrow(toolName: string, start: number, err: unknown, ctx: Record
  * Monkey-patch `server.registerTool` so EVERY tool call is logged uniformly,
  * without touching the individual tool handlers:
  *
- *  - `tool:request  <name>` — the tool name + the full (sanitized) request args.
- *  - `tool:response <name>` — duration, `isError`, and the full (sanitized) result.
- *  - on a thrown error      — logged at `error` and re-thrown unchanged.
+ *  - `tool:request  <name>`: the tool name + the full (sanitized) request args.
+ *  - `tool:response <name>`: duration, `isError`, and the full (sanitized) result.
+ *  - on a thrown error: logged at `error` and re-thrown unchanged.
  *
  * "Sanitized" means base64 blobs / data: URLs (in inputs OR outputs) are collapsed
  * to `first5(...) [N chars]` so logs never balloon with image/video payloads.

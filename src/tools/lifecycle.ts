@@ -21,7 +21,7 @@ function providerUsageFields(u: EpUsage | undefined): { runsOnProvider: boolean 
 function backgroundRemovalMemory(freeMB: number): Record<string, unknown> | null {
   const cfg = runtime.config.backgroundRemoval;
   if (cfg.model === 'none') return null;
-  // Before the session exists, report the provider the runtime WILL use — the same plan
+  // Before the session exists, report the provider the runtime WILL use, which is the same plan
   // `init` follows (an unavailable or known-broken provider is already replaced by CPU).
   const spec = BG_MODELS[cfg.model as BgModelKey];
   const ep = (runtime.health.activeExecutionProvider ?? plannedProviders(spec, cfg.executionProvider).eps[0]) as BgExecutionProvider;
@@ -57,10 +57,10 @@ function imageToolSnapshot(cfg: AppConfig): Record<string, unknown> {
     defaultAspectRatio: cfg.image.defaultAspectRatio,
     defaultResolution: cfg.image.defaultResolution,
     // What reference images MEAN for this model (subject conditioning vs style
-    // transfer) — the caller needs this BEFORE generating, not after.
+    // transfer); the caller needs this BEFORE generating, not after.
     referenceSemantics: runtime.gateway.referenceSemantics?.(cfg.image.model ?? '') ?? null,
     // Per-model knobs as the gateway currently knows them (live capability API
-    // where available — OpenRouter `/images/models/{id}/endpoints`).
+    // where available: OpenRouter `/images/models/{id}/endpoints`).
     options: imageOptionsSnapshot(),
   };
 }
@@ -87,7 +87,7 @@ function backgroundRemovalSnapshot(cfg: AppConfig, h: Health): Record<string, un
   };
 }
 
-/** `none`, or `bearer token (<source>)` — the source (file path / env name) only, never the secret. */
+/** `none`, or `bearer token (<source>)`: the source (file path / env name) only, never the secret. */
 function httpAuthDescription(cfg: AppConfig): string {
   const tok = cfg.http.authToken;
   if (!runtime.httpAuthToken) return 'none';
@@ -112,7 +112,8 @@ function healthSnapshot(gpu: GpuInfo | null): Record<string, unknown> {
       backgroundRemoval: backgroundRemovalSnapshot(cfg, h),
     },
     memory: memorySnapshot(gpu),
-    tinify: runtime.tinifyToken ? 'enabled (PNG compression + WebP)' : 'disabled',
+    ...(cfg.gateway === 'fal' ? { falSafety: cfg.fal.relaxSafety ? 'relaxed (safety checker off, tolerance 5)' : 'fal defaults' } : {}),
+    tinify: runtime.tinifyToken ? 'enabled (PNG compression + WebP/AVIF/JPEG conversion)' : 'disabled',
     output: { dir: runtime.outputDir(), inlinePreview: cfg.output.inlinePreview },
     logging: { policy: cfg.logging.policy, dir: cfg.logging.dir },
     http: { enabled: cfg.http.enabled, host: cfg.http.host, port: cfg.http.port, auth: httpAuthDescription(cfg) },
@@ -189,6 +190,7 @@ function pipelineLines(cfg: AppConfig, h: Health, gpu: GpuInfo | null): string[]
 
 function serviceLines(cfg: AppConfig): string[] {
   return [
+    ...(cfg.gateway === 'fal' ? [`fal safety: ${cfg.fal.relaxSafety ? 'relaxed (checker off, tolerance 5)' : 'fal defaults'}`] : []),
     `Tinify: ${runtime.tinifyToken ? 'enabled' : 'disabled'} | Logging: ${cfg.logging.policy} | Output: ${runtime.outputDir()}`,
   ];
 }
@@ -212,7 +214,7 @@ async function renderHealth(): Promise<string> {
   const cfg = runtime.config;
   const h = runtime.health;
   const lines = [
-    `ai-image-router-mcp — health`,
+    `ai-image-router-mcp: health`,
     `Gateway: ${GATEWAY_LABELS[cfg.gateway]} (${cfg.gateway})`,
     `Uptime: ${h.uptimeSeconds()}s${h.reloadedAt ? ` (reloaded ${new Date(h.reloadedAt).toISOString()})` : ''}`,
     ...imageLines(cfg),

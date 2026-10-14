@@ -1,0 +1,22 @@
+name: Question
+description: How to use the server, what a result or setting means, or whether it suits your case.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the README and the `docs/` folder first. An LLM with a clone of the repository can often answer too. Still stuck? Ask here.
+        Questions about your gateway account, keys or credit belong with the gateway.
+        Never paste an API key, a token file or an `Authorization` header.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What you are trying to do and what you have tried. Include the client configuration or tool call if it helps (without tokens).

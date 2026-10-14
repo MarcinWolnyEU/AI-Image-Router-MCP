@@ -1,6 +1,6 @@
 /**
  * Run the 5 finegrain test images through ONE background-removal model.
- *   npx tsx scripts/bg-matrix.ts <modelKey> <outDir> [ep]
+ *   BG_MATRIX_IMAGES=<dir with the test images> npx tsx scripts/bg-matrix.ts <modelKey> <outDir> [ep]
  * Writes <outDir>/<sameBasename>.png for each input. One process per model keeps GPU/host
  * memory clean between the big BiRefNet/bria sessions.
  */
@@ -15,7 +15,8 @@ const outDir = process.argv[3]!;
 const ep = process.argv[4] ?? 'webgpu';
 if (!model || !outDir) throw new Error('usage: bg-matrix.ts <modelKey> <outDir> [ep]');
 
-const DOCS = 'V:/MCP/finegrain-box-segmenter-onnyx/docs';
+const DOCS = process.env['BG_MATRIX_IMAGES'];
+if (!DOCS) throw new Error('set BG_MATRIX_IMAGES to the folder that holds the test images');
 const IMAGES = [
   '01-flyaway-hair-portrait.png',
   '02-refraction-glass-straw.png',

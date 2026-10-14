@@ -30,7 +30,7 @@ export interface ResolvedImage {
 }
 
 /**
- * Strict raw-base64 decode: only the base64 alphabet (whitespace — e.g. MIME line wraps — is
+ * Strict raw-base64 decode: only the base64 alphabet (whitespace, e.g. MIME line wraps, is
  * ignored) that round-trips cleanly. Null for anything else. Deciding by CONTENT matters because
  * `/` is a base64 character: nearly every real base64 image contains one, so "contains a slash →
  * it's a path" misread them as missing files.
@@ -74,7 +74,7 @@ export async function resolveImageInput(input: string): Promise<ResolvedImage> {
   const detected = detectMedia(bytes);
   if (detected?.kind === 'video') {
     throw new Error(
-      `The image input is a video (${detected.mime}), not a still image. Pass an image — to use a frame of this video, ` +
+      `The image input is a video (${detected.mime}), not a still image. Pass an image. To use a frame of this video, ` +
         'extract one first with transform_media (output_format:"png").',
     );
   }
@@ -112,10 +112,10 @@ async function fetchReferenceBytes(url: string): Promise<{ bytes: Buffer; conten
   return { bytes, contentType: (res.headers.get('content-type') ?? '').split(';')[0]!.trim() };
 }
 
-/** Remote URL — download a local copy and optionally persist it as a `z-download-` file. */
+/** Remote URL: download a local copy and optionally persist it as a `z-download-` file. */
 async function referenceFromUrl(url: string, opts: ResolveRefOpts): Promise<ResolvedRef> {
   const { bytes, contentType } = await fetchReferenceBytes(url);
-  // Magic bytes are authoritative — never trust a (possibly lying) content-type
+  // Magic bytes are authoritative; never trust a (possibly lying) content-type
   // header to accept content the bytes don't actually identify as an image.
   const mimeType = detectImageMime(bytes);
   if (!mimeType) throw new Error(`downloaded content is not a recognized image${contentType ? ` (server sent content-type ${contentType})` : ''}`);
@@ -127,7 +127,7 @@ async function referenceFromUrl(url: string, opts: ResolveRefOpts): Promise<Reso
   return { ...resolved, downloadPath: saved.path };
 }
 
-/** Local file — must exist, be readable, and be an image. */
+/** Local file: must exist, be readable, and be an image. */
 async function referenceFromFile(path: string): Promise<ResolvedRef> {
   let bytes: Buffer;
   try {
@@ -152,7 +152,7 @@ async function resolveReferenceImage(input: string, opts: ResolveRefOpts): Promi
   if (!s) throw new Error('empty reference');
   if (isHttpUrl(s)) return referenceFromUrl(s, opts);
 
-  // data: URL — decode inline. The declared mime is ignored, exactly like a download's
+  // data: URL: decode inline. The declared mime is ignored, exactly like a download's
   // content-type: only bytes that are provably an image pass.
   const dataUrl = parseDataUrl(s);
   if (dataUrl) {
@@ -167,13 +167,13 @@ async function resolveReferenceImage(input: string, opts: ResolveRefOpts): Promi
 
 /**
  * Raw base64 is decided by CONTENT (strict alphabet + round-trip + image magic bytes) BEFORE
- * the path heuristic — `/` is a base64 character, so real images contain it.
+ * the path heuristic: `/` is a base64 character, so real images contain it.
  */
 function referenceFromBase64(s: string): ResolvedRef {
   const raw = decodeRawBase64(s);
   const rawMime = raw ? detectImageMime(raw) : null;
   if (raw && rawMime) return asReference(raw, rawMime);
-  // Looks like a path but does not exist — say so rather than guessing base64.
+  // Looks like a path but does not exist: say so rather than guessing base64.
   if (looksLikePath(s, IMAGE_EXT_RE)) throw new Error('local file not found');
   if (raw) throw new Error('base64 data is not a recognized image');
   throw new Error('not a URL, data URL, readable file path, or base64 image');
@@ -288,7 +288,7 @@ export async function resolveMediaInput(input: string): Promise<ResolvedMedia> {
   }
   if (existsSync(s)) return mediaFromFile(s);
   // Raw base64 only when it really is base64; unrecognized bytes are still passed on (sharp names
-  // the real problem) unless the string reads as a path — then the file is simply missing.
+  // the real problem) unless the string reads as a path, in which case the file is simply missing.
   const raw = decodeRawBase64(s);
   if (raw && (detectMedia(raw) || !looksLikePath(s, MEDIA_EXT))) return { ...sniffKind(raw), bytes: raw };
   if (looksLikePath(s, MEDIA_EXT)) throw new Error(`Could not resolve media input: local file not found: "${s.slice(0, 120)}"`);

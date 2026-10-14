@@ -4,7 +4,7 @@ import type { CapabilityCache } from '../state/capabilityCache.js';
 export interface ModelInfo {
   id: string;
   name?: string;
-  /** unix seconds — used to sort latest-first */
+  /** unix seconds, used to sort latest-first */
   created?: number;
   description?: string;
   /** Eden AI: the underlying sub-provider slug */
@@ -19,7 +19,7 @@ export interface ListModelsResult {
   warnings: string[];
   /**
    * Informational remarks that are NOT problems (e.g. "fal has no model-list API, so this is
-   * the curated list" — true on every run by design). Shown by the wizard, never recorded
+   * the curated list", true on every run by design). Shown by the wizard, never recorded
    * as a configuration issue.
    */
   notes?: string[];
@@ -35,7 +35,7 @@ export interface ImageGenParams {
   model: string;
   aspectRatio?: string | null;
   resolution?: string | null;
-  /** Exact target width (px) — used by gateways whose models accept pixel sizes (e.g. fal object `image_size`). */
+  /** Exact target width (px), used by gateways whose models accept pixel sizes (e.g. fal object `image_size`). */
   width?: number | null;
   /** Exact target height (px); derived from width × aspect_ratio when omitted. */
   height?: number | null;
@@ -58,7 +58,7 @@ export interface ImageGenParams {
    */
   references?: ReferenceImage[];
   /**
-   * Which reference semantic the caller asked for — condition on the reference's
+   * Which reference semantic the caller asked for: condition on the reference's
    * SUBJECT/geometry, or adopt its STYLE/medium. The tool layer validates it
    * against `Gateway.referenceSemantics(model)` before any request is made.
    */
@@ -112,7 +112,7 @@ export type VideoKind = 'text-to-video' | 'image-to-video';
  * What a reference image is FOR. `subject` conditions on the reference's
  * object/geometry (image-to-image, edit); `style` transfers its look/medium
  * (palette, shading, photographic vs vector) without copying the object. Models
- * expose one or the other — conflating them is how a photo reference turns a
+ * expose one or the other; conflating them is how a photo reference turns a
  * "clean 3D icon" request into a picture of the photo.
  */
 export type ReferenceMode = 'subject' | 'style';
@@ -120,7 +120,7 @@ export type ReferenceMode = 'subject' | 'style';
 export interface ReferenceSemantics {
   /** What the model's conditioning input natively does. */
   native: ReferenceMode;
-  /** Modes the gateway can honour — the native one, plus any it can steer via the prompt. */
+  /** Modes the gateway can honour, the native one, plus any it can steer via the prompt. */
   supported: ReferenceMode[];
   /** The provider request field references map to (for diagnostics). */
   field: string;
@@ -210,7 +210,7 @@ export interface Gateway {
    * Optional async warm-up, called once by the runtime after the gateway is
    * created (and by the wizard after model selection): fetch per-model
    * capabilities so the SYNC accessors above can answer from a cache. Must be
-   * best-effort — never throw, never block for long. With `cache`, a persisted answer
+   * best-effort, never throw, never block for long. With `cache`, a persisted answer
    * is used at once (no network on a warm start) and refreshed in the background.
    */
   prepare?(ctx: { imageModel?: string | null; cache?: CapabilityCache }): Promise<void>;
@@ -226,12 +226,12 @@ export interface Gateway {
   /**
    * Pre-billing check of a video request: a refusal message when the gateway knows it
    * cannot honour it (an unknown model id, inputs the model has no field for), else null.
-   * The video tools call it BEFORE submitting — sync or async — so a request the provider
+   * The video tools call it BEFORE submitting, sync or async, so a request the provider
    * would accept and bill without the asked-for effect is refused for free. Never throws.
    */
   checkVideoRequest?(params: VideoGenParams): Promise<string | null>;
   /**
-   * Inspect a thrown error and return human-readable "possible cause" hints —
+   * Inspect a thrown error and return human-readable "possible cause" hints:
    * account/config issues the API reports opaquely (e.g. an ignored provider, a
    * BYOK key routing past remaining credit). May make read-only API calls.
    * Returns [] when it has nothing to add and MUST never throw.

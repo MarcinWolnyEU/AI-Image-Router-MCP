@@ -30,7 +30,7 @@ export function buildGenerateImageSchema(): InputSchema {
 
   const inputSchema: InputSchema = {
     // `job_id` re-invokes a background generation submitted earlier with `wait:false`
-    // — in that mode `prompt` is not needed, so it is optional (validated at runtime).
+    // In that mode `prompt` is not needed, so it is optional (validated at runtime).
     prompt: z.string().optional().describe('The text prompt describing the image to generate (required unless `job_id` is given).'),
   };
   addAspectRatioField(inputSchema, ctx);
@@ -45,7 +45,7 @@ export function buildGenerateImageSchema(): InputSchema {
   return inputSchema;
 }
 
-/** Aspect ratio — only when the model exposes it as a real parameter. */
+/** Aspect ratio: only when the model exposes it as a parameter. */
 function addAspectRatioField(inputSchema: InputSchema, { gw, model }: SchemaContext): void {
   const ratios = gw.imageAspectRatios?.(model);
   if (ratios && ratios.values.length > 0) {
@@ -57,7 +57,7 @@ function addAspectRatioField(inputSchema: InputSchema, { gw, model }: SchemaCont
 }
 
 /**
- * Output size. `width` (px) is the primary lever — height is derived from `aspect_ratio`
+ * Output size. `width` (px) is the primary lever; height is derived from `aspect_ratio`
  * (default 1:1 → square) unless `height` is given explicitly. Gateways whose models
  * accept pixel sizes (fal object `image_size`) use it directly; others map to a tier.
  */
@@ -73,7 +73,7 @@ function addSizeFields(inputSchema: InputSchema, { gw, model }: SchemaContext): 
   // The legacy model-resolution tier/token (OpenRouter/Eden), only when the gateway advertises one.
   const resolutions = gw.imageResolutions?.(model);
   // `{values:[], source:'api'}` = the API positively says this model has NO resolution
-  // parameter (e.g. gpt-image-2.5 renders at its native full size) — offer nothing.
+  // parameter (e.g. gpt-image-2.5 renders at its native full size): offer nothing.
   const modelHasNoResolutionTier = resolutions != null && resolutions.source === 'api' && resolutions.values.length === 0;
   if (resolutions && resolutions.values.length > 0) {
     inputSchema['image_size'] = z
@@ -86,7 +86,7 @@ function addSizeFields(inputSchema: InputSchema, { gw, model }: SchemaContext): 
 }
 
 /**
- * Quality / effort level — only when the configured model advertises one
+ * Quality / effort level, only when the configured model advertises one
  * (OpenRouter `quality`, e.g. gpt-image-2.5: auto|low|medium|high|xhigh|max).
  */
 function addQualityField(inputSchema: InputSchema, { gw, model }: SchemaContext): void {
@@ -104,7 +104,7 @@ function addQualityField(inputSchema: InputSchema, { gw, model }: SchemaContext)
 
 /** Options only some gateways/models have: image count (where advertised) and prompt-sampling controls (Mistral). */
 function addGatewaySpecificFields(inputSchema: InputSchema, { gw, gatewayId, model }: SchemaContext): void {
-  // Number of images per call — offered wherever the model says it takes one (Eden; OpenRouter
+  // Number of images per call, offered wherever the model says it takes one (Eden; OpenRouter
   // models whose live capabilities advertise `n`, e.g. gpt-image-1-mini 1..10).
   const count = gw.imageCountRange?.(model);
   if (count && count.max > 1) {
@@ -145,7 +145,7 @@ function addOutputFormatField(inputSchema: InputSchema, { tinifyEnabled }: Schem
 }
 
 /**
- * Reference images — only when the configured model can be conditioned on them.
+ * Reference images, offered only when the configured model can be conditioned on them.
  * The SEMANTICS of that conditioning (subject vs style) are per-model, so they are
  * stated here, before generation, instead of surprising the caller in the output.
  */
@@ -158,17 +158,17 @@ function addReferenceFields(inputSchema: InputSchema, { gw, model }: SchemaConte
     .describe(
       'One or more reference images for the model to edit or condition on (e.g. refine an existing picture). ' +
         'Each entry is a local file path, an http(s) URL, a data: URL, or raw base64. Remote URLs are downloaded and ' +
-        'all inputs are verified before generation — if any reference cannot be fetched/read or is not a valid image ' +
+        'all inputs are verified before generation: if any reference cannot be fetched/read or is not a valid image ' +
         '(png, jpg, webp, gif, avif, …), the call fails without generating. ' +
         (semantics
           ? `The configured model (${model}) conditions on references as **${semantics.native}** via \`${semantics.field}\`` +
-            `${semantics.note ? ` — ${semantics.note}` : '.'}`
+            `${semantics.note ? `: ${semantics.note}` : '.'}`
           : 'Supported by the configured model.'),
     );
   if (semantics) {
     // Both modes are accepted by the SCHEMA on purpose: an unsupported mode is
     // refused by the handler with an error that names what this model does
-    // provide and which model can do what you asked — far more useful than a
+    // provide and which model can do what you asked. That is far more useful than a
     // raw enum-validation dump, and still before anything is generated.
     inputSchema['reference_mode'] = z
       .enum(['subject', 'style'] as [ReferenceMode, ...ReferenceMode[]])
@@ -212,7 +212,7 @@ function addConstraintFields(inputSchema: InputSchema, { gw, model }: SchemaCont
     .describe(
       'Pin the accent colours: an array of hex values ("#f0ea17", "#e60909"). They are compiled into an exact-colour ' +
         'constraint (including "no <other hue families>"), mapped to the model\'s native palette field where it has one ' +
-        '(fal Recraft `colors[]`), and the result is measured against them — the reply reports the share of accent pixels ' +
+        '(fal Recraft `colors[]`), and the result is measured against them. The reply reports the share of accent pixels ' +
         'that landed on each colour, plus the dominant off-palette accent if the model drifted.',
     );
   inputSchema['palette_tolerance'] = z
@@ -244,7 +244,7 @@ function addConstraintFields(inputSchema: InputSchema, { gw, model }: SchemaCont
     .describe('Measure the result against `palette` / `background` and report it (default true when either is given).');
 }
 
-/** ICO squaring policy — how a non-square model result becomes a square icon. */
+/** ICO squaring policy: how a non-square model result becomes a square icon. */
 function addIcoSquaringFields(inputSchema: InputSchema): void {
   inputSchema['square_fit'] = z
     .enum(['pad', 'crop'])
@@ -257,7 +257,7 @@ function addIcoSquaringFields(inputSchema: InputSchema): void {
   inputSchema['pad_color'] = z
     .string()
     .optional()
-    .describe('Padding colour for `square_fit:"pad"` — "transparent" (default) or a hex like "#ffffff".');
+    .describe('Padding colour for `square_fit:"pad"`: "transparent" (default) or a hex like "#ffffff".');
 }
 
 /** Escape hatch + tool-level options (always available). */
@@ -265,7 +265,7 @@ function addToolOptionFields(inputSchema: InputSchema): void {
   inputSchema['provider_options'] = z
     .record(z.string(), z.any())
     .optional()
-    .describe('Additional model-specific request fields, merged into the underlying request — use for options not surfaced above.');
+    .describe('Additional model-specific request fields, merged into the underlying request. Use for options not surfaced above.');
   inputSchema['save'] = z.boolean().optional().describe('Save the image(s) to the output directory (default true).');
   inputSchema['inline_preview'] = z.boolean().optional().describe('Return an inline image preview to the client (default from config).');
   inputSchema['output_mode'] = z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION);
@@ -274,7 +274,7 @@ function addToolOptionFields(inputSchema: InputSchema): void {
     .optional()
     .describe(
       'Override the configured async mode for this call. true = block until generation finishes and return the result; ' +
-        'false = submit the job and return immediately with a `job_id` (and the provider request_id when available) — the generation keeps running ' +
+        'false = submit the job and return immediately with a `job_id` (and the provider request_id when available). The generation keeps running ' +
         'in the background, and you re-invoke `generate_image` with that `job_id` to poll it (it stays decoupled from any MCP client timeout). ' +
         'Omit to use the configured mode (default async).',
     );

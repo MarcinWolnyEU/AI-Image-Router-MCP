@@ -11,7 +11,7 @@ import { registerLifecycleTools } from './tools/lifecycle.js';
 import { refreshOnReload } from './tools/reloadable.js';
 
 export const SERVER_NAME = 'ai-image-router-mcp';
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '1.0.0';
 
 /**
  * Build a fully-wired MCP server. A fresh instance is created per stdio process
@@ -46,7 +46,7 @@ export function buildServer(): McpServer {
   return server;
 }
 
-/** Show `tool` only while `applies()` holds — now, and again after every successful reload. */
+/** Show `tool` only while `applies()` holds, now, and again after every successful reload. */
 function registerGated(server: McpServer, tool: RegisteredTool, applies: () => boolean): void {
   if (!applies()) tool.disable();
   refreshOnReload(server, tool, () => ({ enabled: applies() }));

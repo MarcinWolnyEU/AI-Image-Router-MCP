@@ -53,7 +53,7 @@ describe('hysteresisCleanup', () => {
   });
 
   it('treats connectivity as 4-connected (diagonal gap is not connected)', () => {
-    // 2×2: seed at (0,0), weak pixel at (1,1) diagonally — only diagonal touch, below-low elsewhere.
+    // 2×2: seed at (0,0), weak pixel at (1,1) diagonally, only diagonal touch, below-low elsewhere.
     //   [1.0, 0.0]
     //   [0.0, 0.3]
     const a = Float32Array.from([1.0, 0.0, 0.0, 0.3]);

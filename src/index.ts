@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
+import { CONFIGURE_COMMAND } from './config/paths.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { runtime } from './state/runtime.js';
 import { buildServer } from './server.js';
@@ -13,7 +14,7 @@ async function main(): Promise<void> {
     await runtime.init();
   } catch (err) {
     process.stderr.write(`[ai-image-router-mcp] Startup failed: ${(err as Error).message}\n`);
-    process.stderr.write('Run `npm run configure` to (re)create config.json.\n');
+    process.stderr.write(`Run \`${CONFIGURE_COMMAND}\` to (re)create config.json.\n`);
     process.exit(1);
   }
 
@@ -30,7 +31,7 @@ async function main(): Promise<void> {
 
   // Pre-download / initialise the background-removal model on startup (non-blocking,
   // so the MCP handshake is never delayed by a ~930 MB download). `BG_NO_PREWARM=1` skips
-  // this — used by short-lived spawns (e.g. `scripts/list-tools.ts`) that only introspect the
+  // this, used by short-lived spawns (e.g. `scripts/list-tools.ts`) that only introspect the
   // server and would otherwise needlessly load a ~970 MB ONNX session. It still loads lazily
   // on the first `remove_background` call.
   if (runtime.config.backgroundRemoval.model !== 'none' && !process.env.BG_NO_PREWARM) {
@@ -86,7 +87,7 @@ async function startHttp(): Promise<void> {
   runtime.logger.info(`MCP server started (Streamable HTTP) at http://${host}:${port}/mcp`, {
     auth: runtime.httpAuthToken
       ? 'bearer token required'
-      : 'NONE — only loopback/IP hosts and http.allowedHosts are accepted (DNS-rebinding guard); do not expose this port publicly',
+      : 'NONE: only loopback/IP hosts and http.allowedHosts are accepted (DNS-rebinding guard); do not expose this port publicly',
   });
 }
 

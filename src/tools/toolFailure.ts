@@ -2,8 +2,8 @@ import { errorResult, type ToolResult } from './helpers.js';
 
 /**
  * An expected, user-facing failure raised from deep inside a tool's pipeline (a validation or
- * verification step). The tool's entry point converts it to `errorResult(message)` — the same
- * reply the step would have returned directly — while any OTHER error keeps propagating to the
+ * verification step). The tool's entry point converts it to `errorResult(message)`, the same
+ * reply the step would have returned directly, while any OTHER error keeps propagating to the
  * handler's catch (health-recorded, `describeError`-formatted).
  */
 export class ToolFailure extends Error {}

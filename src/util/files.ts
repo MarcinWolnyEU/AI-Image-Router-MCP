@@ -65,8 +65,8 @@ export async function saveMedia(
 /**
  * Make a string safe to use as a filename on Windows, macOS and Linux.
  * Replaces, with '-', the union of disallowed characters: the Windows set
- * (`< > : " / \ | ? *`) — a superset that also covers the `/` and `:` that
- * matter on macOS/Linux — plus ALL control characters (incl. NUL / DEL) and
+ * (`< > : " / \ | ? *`), a superset that also covers the `/` and `:` that
+ * matter on macOS/Linux, plus ALL control characters (incl. NUL / DEL) and
  * internal whitespace. Leading/trailing whitespace and dots are trimmed first
  * (Windows rejects trailing dots/spaces; a leading dot would hide the file on
  * Unix), so a trailing space disappears while an invalid char like '?' becomes
@@ -184,7 +184,7 @@ export async function makeImagePreview(
 /** Image mime from magic bytes for provider output that omits it (implemented in `mime.ts`). */
 export { sniffImageMime } from './mime.js';
 
-/** Basic facts about an image file, for reporting (never throws — null when undecodable). */
+/** Basic facts about an image file, for reporting (never throws; null when undecodable). */
 export interface ImageInfo {
   width: number;
   height: number;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CONFIGURE_COMMAND } from '../config/paths.js';
 import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runtime } from '../state/runtime.js';
 import { resolveOutputOptions, stepFail, stepOk, type Step, type ToolResult } from './helpers.js';
@@ -35,7 +36,7 @@ function validateTextToVideo(args: TextToVideoArgs): Step<{ gateway: VideoGatewa
   const gateway = capableVideoGateway('textToVideo');
   if (!gateway) return stepFail(`The configured gateway (${cfg.gateway}) does not support text-to-video.`);
   const model = args.model ?? cfg.textToVideo.model;
-  if (!model) return stepFail('No text-to-video model is configured. Run `npm run configure` to enable it (or pass an explicit `model`).');
+  if (!model) return stepFail(`No text-to-video model is configured. Run \`${CONFIGURE_COMMAND}\` to enable it (or pass an explicit \`model\`).`);
   // Optional in the schema only so a `job_id` poll validates; a generation needs one.
   const prompt = args.prompt?.trim();
   if (!prompt) return stepFail('A `prompt` is required to generate a video (or pass a `job_id` to poll a running job).');

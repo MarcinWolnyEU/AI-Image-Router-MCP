@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CONFIGURE_COMMAND } from '../config/paths.js';
 import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runtime } from '../state/runtime.js';
 import { resolveImageInput } from '../util/inputs.js';
@@ -27,7 +28,7 @@ async function cutoutResult(remover: { modelKey: string; activeEP: string }, png
     previewMaxBytes: runtime.config.output.previewMaxBytes,
     description: 'Background-removed PNG (transparent)',
   });
-  // Named per model — it used to say "BiRefNet" for IS-Net and BEN2 too.
+  // Named per model; it used to say "BiRefNet" for IS-Net and BEN2 too.
   const label = BG_MODELS[remover.modelKey as BgModelKey]?.label ?? remover.modelKey;
   const lines = [`Removed background with ${label} (${remover.modelKey}, execution provider: ${remover.activeEP}).`];
   if (saved) lines.push(saved.path);
@@ -41,7 +42,7 @@ export function registerRemoveBackground(server: McpServer): RegisteredTool {
     {
       title: 'Remove background (local)',
       description:
-        'Remove the background from an image — returns a transparent PNG. ' +
+        'Remove the background from an image and return a transparent PNG. ' +
         'No gateway/API is used.',
       inputSchema: {
         image: z.string().min(1).describe('Image to process: file path, http(s) URL, data: URL, or base64.'),
@@ -53,7 +54,7 @@ export function registerRemoveBackground(server: McpServer): RegisteredTool {
     async (args, extra): Promise<ToolResult> => {
       try {
         if (runtime.config.backgroundRemoval.model === 'none') {
-          return errorResult('Background removal is disabled. Run `npm run configure` and select birefnet-general or birefnet-massive.');
+          return errorResult(`Background removal is disabled. Run \`${CONFIGURE_COMMAND}\` and select birefnet-general or birefnet-massive.`);
         }
 
         const bytes = await loadInputBytes(args.image, extra.signal);

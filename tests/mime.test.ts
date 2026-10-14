@@ -1,5 +1,5 @@
 /**
- * The single magic-byte detector (`src/util/mime.ts`) that every input path uses — and
+ * The single magic-byte detector (`src/util/mime.ts`) that every input path uses, and
  * the AVIF/HEIC cases the five separate sniffers it replaced got wrong: AVIF labelled
  * `image/png` (Mistral vision skipped its re-encode), and any ISO-BMFF `ftyp` header
  * classified as VIDEO (an AVIF passed as base64 went to ffmpeg). Pure, no I/O.
@@ -24,7 +24,7 @@ function ftyp(major: string, compatible: string[] = []): Buffer {
 
 const solid = () => sharp({ create: { width: 8, height: 8, channels: 3, background: '#336699' } });
 
-describe('detectMedia — images', () => {
+describe('detectMedia: images', () => {
   it('recognises png / jpeg / webp / gif / tiff / avif produced by sharp', async () => {
     const formats = [['png', 'image/png'], ['jpeg', 'image/jpeg'], ['webp', 'image/webp'], ['gif', 'image/gif'], ['tiff', 'image/tiff'], ['avif', 'image/avif']] as const;
     const cases: Array<[Buffer, string]> = [];
@@ -58,7 +58,7 @@ describe('detectMedia — images', () => {
   });
 });
 
-describe('detectMedia — video & documents', () => {
+describe('detectMedia: video', () => {
   it('mp4 / quicktime ftyp brands are video', () => {
     assert.deepEqual(detectMedia(ftyp('isom', ['isom', 'iso2', 'avc1', 'mp41'])), { kind: 'video', mime: 'video/mp4' });
     assert.deepEqual(detectMedia(ftyp('qt  ', ['qt  '])), { kind: 'video', mime: 'video/quicktime' });
@@ -74,16 +74,11 @@ describe('detectMedia — video & documents', () => {
     assert.deepEqual(detectMedia(avi), { kind: 'video', mime: 'video/x-msvideo' });
   });
 
-  it('PDF and DOCX/PPTX (zip, by name hint) are documents', () => {
-    assert.deepEqual(detectMedia(Buffer.from('%PDF-1.7\n')), { kind: 'document', mime: 'application/pdf' });
-    const zip = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]);
-    assert.equal(detectMedia(zip)?.mime, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    assert.equal(detectMedia(zip, 'Deck.PPTX')?.mime, 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-  });
-
-  it('unknown bytes → null', () => {
+  it('unknown bytes → null (documents included: no tool accepts them)', () => {
     assert.equal(detectMedia(Buffer.from('hello world')), null);
     assert.equal(detectMedia(Buffer.alloc(0)), null);
+    assert.equal(detectMedia(Buffer.from('%PDF-1.7\n')), null);
+    assert.equal(detectMedia(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])), null, 'zip (DOCX/PPTX)');
   });
 });
 

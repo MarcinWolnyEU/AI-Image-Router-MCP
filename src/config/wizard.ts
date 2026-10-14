@@ -10,10 +10,11 @@
  *
  * This file is the entry point and the top-level sequence; the sections live in
  * `wizardModels.ts` (image/video models), `wizardLocal.ts` (bg removal, Tinify,
- * logging, transport) and `wizardPrompt.ts` (shared prompt plumbing).
+ * logging, transport), `wizardSummary.ts` (the saved summary + next steps) and
+ * `wizardPrompt.ts` (shared prompt plumbing).
  */
 import { existsSync } from 'node:fs';
-import { CONFIG_PATH, fromRoot } from './paths.js';
+import { APP_HOME, CONFIG_PATH, fromHome } from './paths.js';
 import {
   AppConfig,
   configSchema,
@@ -32,9 +33,10 @@ import { createGateway } from '../gateways/registry.js';
 import type { Gateway, ModelInfo } from '../gateways/types.js';
 import { ask, askTokenSource, choiceIndex, IssueLog, log } from './wizardPrompt.js';
 import { configureImage, configureVideoTools } from './wizardModels.js';
-import { configureBackgroundRemoval, configureOutput, configureTinify, configureTransport } from './wizardLocal.js';
+import { printNextSteps, printSavedSummary } from './wizardSummary.js';
+import { configureBackgroundRemoval, configureFalSafety, configureOutput, configureTinify, configureTransport } from './wizardLocal.js';
 
-const WIZARD_VERSION = '0.1.0';
+const WIZARD_VERSION = '1.0.0';
 
 async function selectGateway(existing: AppConfig | null): Promise<GatewayId> {
   const { gateway } = await ask<'gateway'>({
@@ -52,9 +54,9 @@ function selectToken(gateway: GatewayId, prev: TokenSource | null): Promise<Toke
   return askTokenSource(
     {
       defaultFile,
-      defaultExists: existsSync(fromRoot(defaultFile)),
+      defaultExists: existsSync(fromHome(defaultFile)),
       methodMessage: 'Where is your API token?',
-      defaultTitle: `Token file: ${defaultFile} (found in project root)`,
+      defaultTitle: `Token file: ${defaultFile} (found in ${APP_HOME})`,
       pasteTitle: 'Paste the token now (stored in config.json)',
       pathMessage: 'Path to the token file:',
       pastePrompt: 'Paste your API token:',
@@ -67,7 +69,7 @@ function selectToken(gateway: GatewayId, prev: TokenSource | null): Promise<Toke
  * The wizard's menus need raw keyboard input (arrow keys). Node only exposes
  * that when stdin is a real console: `process.stdin.isTTY` is true in a Windows
  * console, PowerShell, cmd, ConPTY (Windows Terminal / VS Code), or under
- * `winpty`. In bare Git Bash (mintty) stdin is a pipe — isTTY is false and arrow
+ * `winpty`. In bare Git Bash (mintty) stdin is a pipe, isTTY is false and arrow
  * keys silently do nothing. Detect that up front and tell the user how to fix it
  * rather than letting them get stuck on the first menu.
  *
@@ -81,7 +83,7 @@ function assertInteractiveTty(): void {
   const lines = [
     '',
     'This configuration wizard needs an interactive terminal (raw keyboard input)',
-    'for its arrow-key menus, but stdin is not a TTY here — arrow keys and Enter',
+    'for its arrow-key menus, but stdin is not a TTY here, so arrow keys and Enter',
     'will not work.',
     '',
   ];
@@ -100,7 +102,7 @@ function assertInteractiveTty(): void {
   } else {
     lines.push(
       'Run the wizard directly in an interactive terminal (PowerShell, cmd, or',
-      'Windows Terminal) — do not pipe or redirect its input.',
+      'Windows Terminal). Do not pipe or redirect its input.',
     );
   }
   lines.push('');
@@ -141,57 +143,13 @@ async function configureGateway(
   } catch (err) {
     issues.add('error', 'token', `Token could not be resolved: ${(err as Error).message}`);
   }
-  return { gateway, token, gw: createGateway(gateway, resolvedToken, logger), prevForGateway };
+  return { gateway, token, gw: createGateway(gateway, resolvedToken, logger, { falRelaxSafety: prevForGateway?.fal.relaxSafety ?? false }), prevForGateway };
 }
 
 /** For Mistral the "image model" is the orchestrator LLM; otherwise keep the previous choice / default. */
 function mistralAgentModelFor(gateway: GatewayId, imageModel: ModelInfo | null, existing: AppConfig | null): string {
   if (gateway === 'mistral' && imageModel) return imageModel.id;
   return existing?.mistralAgentModel ?? 'mistral-medium-latest';
-}
-
-function printSavedSummary(gateway: GatewayId, draft: AppConfig, issues: IssueLog): void {
-  const { image, imageToVideo, textToVideo, backgroundRemoval: bg } = draft;
-  const imageShape = image.defaultAspectRatio
-    ? `  [${image.defaultAspectRatio}${image.defaultResolution ? ', ' + image.defaultResolution : ''}]`
-    : '';
-  // The real target: AIR_MCP_CONFIG may redirect it away from the project's config.json.
-  log(`\n✅ Saved configuration to ${CONFIG_PATH}\n`);
-  log(`Gateway:        ${GATEWAY_LABELS[gateway]}`);
-  log(`Image model:    ${image.model ?? '(none)'}${imageShape}`);
-  log(`Image→Video:    ${imageToVideo.enabled ? imageToVideo.model : 'disabled'}`);
-  log(`Text→Video:     ${textToVideo.enabled ? textToVideo.model : 'disabled'}`);
-  log(`Bg removal:     ${bg.model}${bg.model !== 'none' ? ` (${bg.executionProvider})` : ''}`);
-  log(`Tinify:         ${draft.tinify ? 'enabled (PNG compression + WebP)' : 'disabled'}`);
-  log(`Logging:        ${draft.logging.policy}`);
-  if (issues.issues.length > 0) {
-    log(`\n${issues.issues.length} issue(s) were recorded during configuration (visible via the health_status tool).`);
-  }
-}
-
-/**
- * Next steps. For stdio (the usual case) the MCP client *spawns* the server
- * itself from the command you register — you don't run it by hand. Only HTTP
- * mode is something you start yourself.
- */
-function printNextSteps(http: AppConfig['http']): void {
-  const entry = fromRoot('dist/index.js').replace(/\\/g, '/');
-  log('\nNext step — register this server with your MCP client. The client then');
-  log('launches it for you over stdio (you do NOT run `npm start` yourself):');
-  log('');
-  log('  Claude Code:');
-  log(`    claude mcp add ai-image-router -- node "${entry}"`);
-  log('');
-  log('  Claude Desktop (claude_desktop_config.json → "mcpServers"):');
-  log(`    "ai-image-router": { "command": "node", "args": ["${entry}"] }`);
-  log('');
-  log('  (Run `npm run build` first if dist/ is missing or out of date.)');
-  if (http.enabled) {
-    log('');
-    log('HTTP mode is the one mode you start yourself, then point the client at the URL:');
-    log(`    npm start -- --http      # listens on http://${http.host}:${http.port}`);
-  }
-  log('');
 }
 
 async function main(): Promise<void> {
@@ -204,6 +162,7 @@ async function main(): Promise<void> {
   const image = await configureImage(gw, issues, prevForGateway?.image ?? null);
   const { imageToVideo, textToVideo } = await configureVideoTools(gw, gateway, issues, prevForGateway);
   const backgroundRemoval = await configureBackgroundRemoval(existing);
+  const fal = await configureFalSafety(gateway, existing);
   const tinify = await configureTinify(existing);
   const { output, logging } = await configureOutput(existing);
   const http = await configureTransport(existing);
@@ -216,6 +175,7 @@ async function main(): Promise<void> {
     output,
     logging,
     http,
+    fal,
     image: image.config,
     imageToVideo,
     textToVideo,

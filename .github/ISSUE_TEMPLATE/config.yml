@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/MarcinWolnyEU/ai-image-router-mcp/security/advisories/new
+    about: Report security problems privately, not in a public issue.
+  - name: Gateway account, key or billing problem
+    url: https://github.com/MarcinWolnyEU/ai-image-router-mcp#supported-gateways
+    about: Keys, credit, quotas and content moderation are managed by OpenRouter, Mistral, Eden AI and fal.ai, not by this repository.

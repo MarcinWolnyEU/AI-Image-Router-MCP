@@ -1,10 +1,10 @@
 /**
- * OpenRouter Image API — capability-driven request building + error explaining.
+ * OpenRouter Image API: capability-driven request building + error explaining.
  * Pure/unit: no network (a stubbed global `fetch` stands in for OpenRouter where
  * the real gateway class is exercised), no files, no cost.
  *
  * Fixture: the LIVE `/images/models/openai/gpt-image-2.5-sunburst/endpoints`
- * record captured 2026-09-09 — the model has NO `resolution`, `quality` is
+ * record captured 2026-09-09; the model has NO `resolution`, `quality` is
  * auto|low|medium|high|xhigh|max and `background` is auto|opaque (no transparent).
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -372,7 +372,7 @@ describe('OpenRouterGateway.generateImage over a stubbed fetch', () => {
     assert.ok(!causes.some((c) => /BYOK/.test(c)), `no BYOK hint expected:\n${causes.join('\n')}`);
   });
 
-  it('an UPSTREAM quota error while credit remains suggests "Include BYOK" — unless /key shows BYOK unused', async () => {
+  it('an UPSTREAM quota error while credit remains suggests "Include BYOK", unless /key shows BYOK unused', async () => {
     const upstream = { status: 200, json: { error: { code: 502, message: 'You exceeded your current quota, please check your plan and billing details.' } } };
     responder = (url) => account(url, { include_byok_in_limit: true, byok_usage: 3.2 }) ?? upstream;
     assert.ok((await diagnose(gw())).some((c) => /Include BYOK/.test(c)));
@@ -384,7 +384,7 @@ describe('OpenRouterGateway.generateImage over a stubbed fetch', () => {
   it('a 200 body carrying an `error` object fails fast with the explained message', async () => {
     responder = () => ({ status: 200, json: { error: { code: 502, message: 'You exceeded your current quota', metadata: { error_type: 'provider_unavailable' } } } });
     await assert.rejects(gw().generateImage(base()), /error in a 200 body: HTTP 502 — Model\/provider failure.*You exceeded your current quota/);
-    assert.equal(requests.length, 1); // deterministic — no retry
+    assert.equal(requests.length, 1); // deterministic, so no retry
   });
 
   it('a transient 502 is retried exactly ONCE in total (the HTTP layer never re-sends the POST)', async () => {
@@ -393,7 +393,7 @@ describe('OpenRouterGateway.generateImage over a stubbed fetch', () => {
     assert.equal(requests.length, 2, 'one request + one gateway retry — not 3 HTTP tries × 2 attempts');
   });
 
-  it('a 502 safety block (moderation reasons) is deterministic — no retry at all', async () => {
+  it('a 502 safety block (moderation reasons) is deterministic, so no retry at all', async () => {
     responder = () => ({
       status: 502,
       json: { error: { code: 502, message: 'Generation blocked', metadata: { error_type: 'content_policy_violation', reasons: ['violence'] } } },

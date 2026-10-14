@@ -22,7 +22,7 @@ interface MistralModel {
 /**
  * Mistral image generation runs through the Agents API `image_generation` tool
  * (backed by FLUX1.1 [pro] Ultra). There is no standalone image endpoint and no
- * structured size/aspect/count parameters — we steer composition via the prompt.
+ * structured size/aspect/count parameters; we steer composition via the prompt.
  *
  * The "model" selected in config is the orchestrator LLM that drives the agent.
  */
@@ -53,7 +53,7 @@ export class MistralGateway implements Gateway {
   }
 
   imageAspectRatios(): null {
-    return null; // not a real param — wizard falls back to the curated list, encoded into the prompt
+    return null; // not a real param; wizard falls back to the curated list, encoded into the prompt
   }
   imageResolutions(): null {
     return null;
@@ -84,7 +84,7 @@ export class MistralGateway implements Gateway {
     };
   }
 
-  // Sampling args (temperature/top_p) live on the AGENT, not the conversation — the
+  // Sampling args (temperature/top_p) live on the AGENT, not the conversation: the
   // conversation endpoint rejects completion_args when an agent_id is set. So cache one
   // agent per (orchestrator + sampling args) combination.
   private async ensureAgent(orchestratorModel: string, completionArgs: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
@@ -101,7 +101,7 @@ export class MistralGateway implements Gateway {
         tools: [{ type: 'image_generation' }],
         ...(Object.keys(completionArgs).length > 0 ? { completion_args: completionArgs } : {}),
       },
-      // Creating an agent bills nothing — a duplicate from a retried POST is harmless.
+      // Creating an agent bills nothing: a duplicate from a retried POST is harmless.
       { headers: this.headers(), signal, idempotent: true },
     );
     if (!agent.id) throw new Error('Mistral did not return an agent id.');
@@ -148,7 +148,7 @@ export class MistralGateway implements Gateway {
   }
 }
 
-/** The agents image tool takes a prompt only — say which caller fields had no effect. */
+/** The agents image tool takes a prompt only; say which caller fields had no effect. */
 function ignoredParamWarnings(params: ImageGenParams): string[] {
   const extra = params.extra ? Object.keys(params.extra) : [];
   return extra.length > 0
@@ -171,7 +171,7 @@ function completionArgsFor(params: ImageGenParams): Record<string, unknown> {
   };
 }
 
-/** Mistral has no size/aspect params — steer through the prompt. */
+/** Mistral has no size/aspect params; steer through the prompt. */
 function promptWithSteering(params: ImageGenParams): string {
   let prompt = params.prompt;
   if (params.aspectRatio) prompt += `\n\n(Compose the image in a ${params.aspectRatio} aspect ratio.)`;

@@ -108,7 +108,7 @@ async function videoResult(label: string, outputMode: OutputMode, op: (outPath: 
  */
 async function pickRepresentativeFrame(input: ResolvedMedia, signal?: AbortSignal): Promise<Buffer> {
   // One temp copy of a byte-only video for the whole search (ffprobe + up to 18 extractions);
-  // each primitive used to write — and delete — its own copy of the full video.
+  // each primitive used to write (and delete) its own copy of the full video.
   return withVideoFile(input, async (media) => {
     const duration = await ffprobeDuration(media, signal);
     const tmp = await mkdtemp(join(tmpdir(), 'air-frame-'));
@@ -189,7 +189,7 @@ async function convertTo(bytes: Buffer, fmt: ImageFormat, mimeType: string, c: T
 /** Convert an extracted video frame (PNG, possibly resized) to the requested image format. */
 async function convertFrame(frame: WorkingImage, fmt: TransformFormat, c: TransformCtx): Promise<WorkingImage> {
   if (fmt !== 'png') return convertTo(frame.bytes, fmt as ImageFormat, frame.mimeType, c);
-  // A PNG frame is only optimized (Tinify), in place — no `-original`, and the mime stays as it was.
+  // A PNG frame is only optimized (Tinify), in place, with no `-original`, and the mime stays as it was.
   const tinifyToken = runtime.tinifyToken;
   if (!tinifyToken) return frame;
   const optimized = await convertImage(frame.bytes, 'png', { tinifyToken, sourceMime: frame.mimeType, signal: c.signal, logger: runtime.logger });
@@ -306,7 +306,7 @@ async function addIcoInputEntries(acc: IcoCollection, bytes: Buffer, element: nu
   if (intended != null && (entries.length !== 1 || entries[0]!.width !== intended)) {
     throw new ToolFailure(
       `ico element ${element} (${from}) was declared as ${intended}px but contains ${entries.length} entr(y/ies) of ` +
-        `${entries.map((e) => `${e.width}px`).join(', ')}. Nothing was written — fix the declared \`sizes\` or the input.`,
+        `${entries.map((e) => `${e.width}px`).join(', ')}. Nothing was written. Fix the declared \`sizes\` or the input.`,
     );
   }
   for (const entry of entries) {
@@ -322,7 +322,7 @@ async function addIcoInputEntries(acc: IcoCollection, bytes: Buffer, element: nu
   }
 }
 
-/** Add a plain image input — it must already be square AND an allowed size (never resized). */
+/** Add a plain image input; it must already be square AND an allowed size (never resized). */
 async function addPlainImageEntry(acc: IcoCollection, bytes: Buffer, mimeType: string, element: number, from: string, intended: number | undefined): Promise<void> {
   let size: number;
   try {
@@ -332,8 +332,8 @@ async function addPlainImageEntry(acc: IcoCollection, bytes: Buffer, mimeType: s
   }
   if (intended != null && size !== intended) {
     throw new ToolFailure(
-      `ico element ${element} (${from}) was declared as ${intended}px but is actually ${size}x${size}. Nothing was written — ` +
-        'this tool never resizes, so fix the declared `sizes`, supply the right file, or use `build_icon_set` to derive the sizes.',
+      `ico element ${element} (${from}) was declared as ${intended}px but is actually ${size}x${size}. Nothing was written. ` +
+        'This tool never resizes, so fix the declared `sizes`, supply the right file, or use `build_icon_set` to derive the sizes.',
     );
   }
   claimIcoSize(acc, size, element);
@@ -375,14 +375,14 @@ function assertMatchesDeclaredSet(sizes: number[], declared: number[]): void {
 
 /**
  * Build a multi-size (or merged) ICO from an array of inputs. Each plain image must be
- * square AND an allowed size (no resizing — pass generate_image or build_icon_set to
+ * square AND an allowed size (no resizing; pass generate_image or build_icon_set to
  * downscale instead); each existing .ico is parsed and its entries merged. No duplicate
  * sizes are allowed. `width`/`height` are ignored. Inline preview renders the largest
  * embedded size.
  *
  * `declared` (the caller's `sizes`) turns this from "embed whatever the files happen to
  * be" into a checked contract: the emitted icon must equal the declared set exactly, and
- * when one size is declared per element, each element must actually BE that size —
+ * when one size is declared per element, each element must actually BE that size,
  * otherwise the call fails naming the offending element instead of silently shipping a
  * different set. Every entry is reported with the input it came from either way.
  */
@@ -400,7 +400,7 @@ function buildIcoFromInputs(
     if (declared) assertMatchesDeclaredSet(sizes, declared);
 
     const summary = [
-      `Output: ${ICO_MIME} (${images.length} size(s): ${sizes.join(', ')}${declared ? ' — matches the declared set' : ''})`,
+      `Output: ${ICO_MIME} (${images.length} size(s): ${sizes.join(', ')}${declared ? ', matches the declared set' : ''})`,
       'Entries (size ← source):',
       ...[...provenance].sort((a, b) => b.size - a.size).map((p) => `  ${p.size}x${p.size} ← ${p.from}`),
     ];
@@ -413,7 +413,7 @@ async function emitBuiltIco(bytes: Buffer, summary: string[], ctx: { outputMode:
   if (!ctx.save) {
     // save:false writes nothing: report the icon and preview its largest entry inline.
     const preview = ctx.inline ? await icoPreviewContent(bytes, runtime.config.output.previewMaxBytes) : [];
-    return { content: [{ type: 'text', text: [`Built the icon — not saved (save:false).`, ...summary].join('\n') }, ...preview] };
+    return { content: [{ type: 'text', text: [`Built the icon; not saved (save:false).`, ...summary].join('\n') }, ...preview] };
   }
   const saved = await writeMediaFile(runtime.outputDir(), `${mediaStem('icon')}.ico`, bytes);
   const content = await renderIcoMediaContent({
@@ -465,9 +465,9 @@ async function unpackIco(bytes: Buffer, c: TransformCtx): Promise<ToolResult> {
   return c.save ? saveUnpackedLayers(layers, spec, c) : previewUnpackedLayers(layers, spec.mime, c.inline);
 }
 
-/** save:false — report the sizes and (when enabled) return inline previews; nothing is written. */
+/** save:false: report the sizes and (when enabled) return inline previews; nothing is written. */
 async function previewUnpackedLayers(layers: UnpackedLayer[], mime: string, inline: boolean): Promise<ToolResult> {
-  const lines = [`Unpacked ${layers.length} ICO size(s) — not saved (save:false): ${layers.map((l) => `${l.width}x${l.height}`).join(', ')}`];
+  const lines = [`Unpacked ${layers.length} ICO size(s); not saved (save:false): ${layers.map((l) => `${l.width}x${l.height}`).join(', ')}`];
   const media: ToolContent[] = [];
   if (inline) {
     for (const l of layers) {
@@ -588,9 +588,9 @@ export function registerMediaEditTools(server: McpServer): void {
     {
       title: 'Transform media (resize / convert / extract frame / output mode)',
       description:
-        'Resize, convert format, extract a video still, and/or change how the result is returned — all in one tool. ' +
+        'Resize, convert format, extract a video still, and/or change how the result is returned, all in one tool. ' +
         'Input may be a file path, http(s) URL, data: URL, or base64. With only `output_mode` it returns the file unchanged (as a path or base64). ' +
-        'With `output_format` it converts an image (png/jpg/webp/avif; Tinify when configured, else sharp) — no resize. ' +
+        'With `output_format` it converts an image (png/jpg/webp/avif; Tinify when configured, else sharp), with no resize. ' +
         'With `width`/`height` it downsizes (Magic Kernel Sharp 2021 for images, ffmpeg for video), only ever shrinking. ' +
         'For a VIDEO input, an image `output_format` extracts a representative still frame (skips mostly-black frames). ' +
         'Requesting a video `output_format` for an image returns an error pointing at `image_to_video`.',
@@ -603,19 +603,19 @@ export function registerMediaEditTools(server: McpServer): void {
         output_format: z
           .enum(['png', 'jpg', 'webp', 'avif', 'ico', 'mp4'])
           .optional()
-          .describe('Target format. Image formats (png/jpg/webp/avif) convert an image, or extract+convert a still from a video. "ico" builds a multi-size Windows icon from the image array: each image must already be a square allowed ICO size (' + ICO_ALLOWED_SIZES.join(', ') + '), existing .ico files are merged, and duplicate sizes are rejected (no resizing — use generate_image to downscale a single large image to a chosen width). "mp4" on a VIDEO input converts it to an H.264/AAC mp4 (webm/mov/mkv/avi → mp4; an mp4 passes through unchanged); on an image input it is rejected (use image_to_video).'),
+          .describe('Target format. Image formats (png/jpg/webp/avif) convert an image, or extract+convert a still from a video. "ico" builds a multi-size Windows icon from the image array: each image must already be a square allowed ICO size (' + ICO_ALLOWED_SIZES.join(', ') + '), existing .ico files are merged, and duplicate sizes are rejected (no resizing; use generate_image to downscale a single large image to a chosen width). "mp4" on a VIDEO input converts it to an H.264/AAC mp4 (webm/mov/mkv/avi → mp4; an mp4 passes through unchanged); on an image input it is rejected (use image_to_video).'),
         sizes: z
           .array(z.number().int().min(1))
           .optional()
           .describe(
             'The set of sizes the `.ico` is DECLARED to contain (only with `output_format:"ico"`). The emitted icon must equal ' +
               'this set exactly or the call fails and writes nothing. Pass one size per input and each input must actually be ' +
-              'that size — a file whose real dimensions differ from its declared slot is reported by name instead of being ' +
+              'that size: a file whose real dimensions differ from its declared slot is reported by name instead of being ' +
               'silently embedded at its real size. Without `sizes` the entries are still listed with their source in the reply.',
           ),
         output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
         save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
-        inline_preview: z.boolean().optional().describe('Return an inline preview for images (default from config). Ignored (always false) for batch operations — an array of non-ico inputs. For ico, shows the largest embedded size.'),
+        inline_preview: z.boolean().optional().describe('Return an inline preview for images (default from config). Ignored (always false) for batch operations (an array of non-ico inputs). For ico, shows the largest embedded size.'),
       },
     },
     async (args, extra): Promise<ToolResult> => {

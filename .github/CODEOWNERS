@@ -1,0 +1,8 @@
+# Every file needs a review from the maintainer.
+* @MarcinWolnyEU
+
+# Workflows, release and supply-chain configuration.
+/.github/ @MarcinWolnyEU
+/server.json @MarcinWolnyEU
+/package.json @MarcinWolnyEU
+/package-lock.json @MarcinWolnyEU

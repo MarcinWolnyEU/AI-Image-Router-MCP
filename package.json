@@ -1,7 +1,8 @@
 {
   "name": "ai-image-router-mcp",
-  "version": "0.1.0",
-  "description": "MCP server that routes image generation, image-to-video, text-to-video, and local background removal across multiple LLM gateways (OpenRouter, Mistral, Eden AI).",
+  "mcpName": "io.github.MarcinWolnyEU/ai-image-router-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for images and short video: generation across OpenRouter, Mistral, Eden AI and fal.ai, plus local background removal, GIF assembly, ICO/icon sets, cropping and conversion.",
   "type": "module",
   "engines": {
     "node": ">=20.6"
@@ -15,6 +16,10 @@
     "dist",
     "data",
     "docs",
+    "mcp.json",
+    "server.json",
+    ".cursor-plugin",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {
@@ -28,24 +33,31 @@
     "typecheck": "tsc --noEmit",
     "trellis": "trellis audit .",
     "list-tools": "tsx scripts/list-tools.ts",
-    "unit": "node --import tsx --test tests/sanitize.test.ts tests/postprocess.test.ts tests/generationJobs.test.ts tests/files.test.ts tests/openrouter.test.ts tests/http.test.ts tests/fal.test.ts tests/mime.test.ts tests/executionProvider.test.ts tests/sysinfo.test.ts tests/sharedHelpers.test.ts tests/eden.test.ts",
+    "unit": "node --import tsx --test tests/sanitize.test.ts tests/postprocess.test.ts tests/generationJobs.test.ts tests/files.test.ts tests/openrouter.test.ts tests/http.test.ts tests/fal.test.ts tests/mime.test.ts tests/executionProvider.test.ts tests/sysinfo.test.ts tests/sharedHelpers.test.ts tests/eden.test.ts tests/manifests.test.ts tests/paths.test.ts",
     "integration:nonpayment": "node --import tsx --test tests/references.test.ts tests/transform.test.ts tests/gif.test.ts tests/ico.test.ts tests/iconSet.test.ts tests/constraints.test.ts tests/asyncRuntime.test.ts tests/toolsAsync.integration.test.ts tests/imageResult.test.ts tests/toolsReload.integration.test.ts tests/bgPreprocess.test.ts tests/capabilityCache.test.ts tests/modelDownload.test.ts tests/runtimeRemover.test.ts tests/httpTransport.test.ts tests/transformVideo.test.ts tests/saveFalse.test.ts",
     "integration:paid": "node --import tsx --test \"tests/paid/**/*.test.ts\"",
-    "test": "npm run unit && npm run integration:nonpayment"
+    "test": "npm run unit && npm run integration:nonpayment",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "image-generation",
-    "text-to-video",
-    "image-to-video",
-    "background-removal",
-    "openrouter",
-    "mistral",
-    "edenai",
-    "web-design",
+    "animation",
     "awwwards",
-    "animation"
+    "background-removal",
+    "edenai",
+    "fal",
+    "fal-ai",
+    "favicon",
+    "gif",
+    "ico",
+    "image-generation",
+    "image-to-video",
+    "mcp",
+    "mistral",
+    "model-context-protocol",
+    "openrouter",
+    "text-to-video",
+    "tinify",
+    "web-design"
   ],
   "author": "Marcin Wolny",
   "license": "MIT",

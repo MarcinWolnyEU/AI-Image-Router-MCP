@@ -5,7 +5,7 @@
  * `z-download-` save+dedup+sanitize behavior, magic-byte format detection, and
  * the fail-closed contract (any bad input ⇒ no generation).
  *
- * Run: `npm test`  (node:test via tsx — no test framework dependency).
+ * Run: `npm test`  (node:test via tsx, no test framework dependency).
  */
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -45,10 +45,10 @@ before(async () => {
     } else if (url === '/photo.jpg') {
       res.writeHead(200, { 'content-type': 'image/jpeg' }).end(jpeg);
     } else if (url === '/noext') {
-      // No extension in the URL — extension must come from the mime type.
+      // No extension in the URL; extension must come from the mime type.
       res.writeHead(200, { 'content-type': 'image/png' }).end(PNG_1x1);
     } else if (url === '/lies.png') {
-      // Claims to be a PNG but the bytes are HTML — magic-byte check must reject.
+      // Claims to be a PNG but the bytes are HTML; magic-byte check must reject.
       res.writeHead(200, { 'content-type': 'image/png' }).end('<!doctype html><html>nope</html>');
     } else if (url === '/missing') {
       res.writeHead(404).end('not found');
@@ -65,7 +65,7 @@ after(async () => {
   await new Promise<void>((r) => server.close(() => r()));
 });
 
-describe('reference resolution — local & inline inputs', () => {
+describe('reference resolution: local & inline inputs', () => {
   it('resolves a valid local PNG file', async () => {
     const dir = await tmp();
     const file = join(dir, 'ref.png');
@@ -105,7 +105,7 @@ describe('reference resolution — local & inline inputs', () => {
   });
 
   it('accepts raw base64 that CONTAINS "/" (decided by content, not the path heuristic)', async () => {
-    // A real image whose base64 has slashes — nearly every non-trivial one does.
+    // A real image whose base64 has slashes; nearly every non-trivial one does.
     const raw = Buffer.from(Array.from({ length: 32 * 32 * 3 }, (_, i) => (i * 37 + (i >> 5) * 11) & 255));
     const img = await sharp(raw, { raw: { width: 32, height: 32, channels: 3 } }).png().toBuffer();
     const b64 = img.toString('base64');
@@ -130,7 +130,7 @@ describe('reference resolution — local & inline inputs', () => {
       ['a.png', PNG_1x1, 'image/png'],
       ['b.jpg', jpeg, 'image/jpeg'],
       ['c.webp', webp, 'image/webp'],
-      // header-only buffers are enough — resolution validates the signature, not the full file
+      // header-only buffers are enough; resolution validates the signature, not the full file
       ['d.gif', Buffer.from('GIF89a\x00\x00', 'binary'), 'image/gif'],
       // BMP: 14-byte file header + the 40-byte BITMAPINFOHEADER size (a bare "BM" is too weak a signature)
       ['e.bmp', Buffer.from('BM\x46\x00\x00\x00\x00\x00\x00\x00\x36\x00\x00\x00\x28\x00\x00\x00', 'binary'), 'image/bmp'],
@@ -175,7 +175,7 @@ describe('reference resolution — local & inline inputs', () => {
   });
 });
 
-describe('reference resolution — remote downloads', () => {
+describe('reference resolution: remote downloads', () => {
   it('downloads a remote image and saves a z-download- copy', async () => {
     const dir = await tmp();
     const { references, downloads, errors } = await resolveReferenceImages([`${base}/pic.png`], { downloadDir: dir });
@@ -274,7 +274,7 @@ describe('saveDownloadCopy / sanitizeFilename', () => {
 });
 
 describe('resolveImageInput / resolveMediaInput (mp4 image_to_video, remove_background, crop/transform)', () => {
-  // ISO-BMFF `ftyp` box with an mp4 brand — what detectMedia classifies as video/mp4.
+  // ISO-BMFF `ftyp` box with an mp4 brand, which detectMedia classifies as video/mp4.
   const MP4_HEAD = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42', 'latin1'), Buffer.alloc(16)]);
 
   it('refuses a VIDEO handed in as an image, before anything is sent (it used to go out labelled image/png)', async () => {

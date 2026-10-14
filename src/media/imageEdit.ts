@@ -28,7 +28,7 @@ export async function cropImage(
 
 /**
  * Downsize using the Magic Kernel Sharp 2021 kernel, only ever shrinking
- * (withoutEnlargement). Fits INSIDE width×height, preserving aspect ratio — sharp's
+ * (withoutEnlargement). Fits INSIDE width×height, preserving aspect ratio. Sharp's
  * default fit is `cover`, which center-CROPPED to the box when both were given.
  * Preserves the input format.
  */
@@ -46,7 +46,7 @@ export async function downsizeImage(input: Buffer | string, dims: { width?: numb
 }
 
 /**
- * Fraction of pixels in a raw interleaved buffer that are "black" — i.e. whose
+ * Fraction of pixels in a raw interleaved buffer that are "black", i.e. whose
  * brightest channel is below `threshold`. Pure (no I/O) so it's unit-testable.
  */
 export function blackFraction(raw: Buffer, channels: number, threshold = 32): number {

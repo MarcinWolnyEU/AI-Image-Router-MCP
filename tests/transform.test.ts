@@ -85,7 +85,7 @@ describe('convertImage with Tinify (stubbed API)', () => {
     }
   });
 
-  it('a Tinify answer in the wrong format is not trusted — sharp produces the target instead', async () => {
+  it('a Tinify answer in the wrong format is not trusted: sharp produces the target instead', async () => {
     const restore = stubTinify((b) => b); // "convert" hands the PNG back unchanged
     try {
       const out = await convertImage(await solidPng(), 'webp', { tinifyToken: 'k', logger: QUIET });
@@ -98,7 +98,7 @@ describe('convertImage with Tinify (stubbed API)', () => {
 });
 
 describe('downsizeImage', () => {
-  it('with BOTH width and height it fits inside the box (aspect kept) — it never crops', async () => {
+  it('with BOTH width and height it fits inside the box (aspect kept) and never crops', async () => {
     const src = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#ffffff' } }).png().toBuffer();
     const out = await downsizeImage(src, { width: 200, height: 200 });
     const meta = await sharp(out.bytes).metadata();
@@ -176,7 +176,7 @@ describe('renderMediaContent (output_mode)', () => {
 //
 // Gated on a *functional* ffmpeg, not merely a present one: clip creation is
 // bounded and self-killing, so a hanging or non-transcoding ffmpeg (some
-// sandboxed CI environments — observed wedging the run for >1h) makes these
+// sandboxed CI environments; observed wedging the run for >1h) makes these
 // tests SKIP fast instead of hanging the whole suite. `-nostdin` avoids the
 // classic stdin hang. Each test also has a hard timeout as a backstop.
 const FF_TIMEOUT = 30_000;

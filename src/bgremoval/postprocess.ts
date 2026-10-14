@@ -99,8 +99,8 @@ function keepRegionIfSeeded(ws: FloodWorkspace, a: Float32Array, width: number, 
  * leaves on flat backgrounds) while preserving soft edges (connected back to the subject's solid
  * core) and any confidently-segmented detached subject. Returns a new array; input is untouched.
  *
- * Note: a genuinely detached real subject the model segmented *weakly* (peak < `high`) will be
- * dropped — that's the intended trade (it's near-unusable anyway), but callers should gate this
+ * Note: a detached real subject the model segmented *weakly* (peak < `high`) will be
+ * dropped. That's the intended trade (it's near-unusable anyway), but callers should gate this
  * behind a per-model flag rather than apply it universally.
  */
 export function hysteresisCleanup(

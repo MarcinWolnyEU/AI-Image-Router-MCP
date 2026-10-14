@@ -1,5 +1,5 @@
 /**
- * Remote-connector smoke test — what Le Chat / Vibe do over Streamable HTTP, scripted.
+ * Remote-connector smoke test: what Le Chat / Vibe do over Streamable HTTP, scripted.
  *
  *   npx tsx scripts/connector-test.ts [url] [--shutdown]
  *

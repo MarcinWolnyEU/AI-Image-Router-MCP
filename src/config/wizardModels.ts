@@ -41,7 +41,7 @@ const LEADERBOARD_FOR: Record<ModelToolKey, LeaderboardKind> = {
 /**
  * Build prompts choices from models, marking leaderboard top-10 hits and
  * floating any ranked model to the top (best rank first) so it's always visible
- * — the gateway returns models newest-first, which otherwise buries them.
+ * (the gateway returns models newest-first, which otherwise buries them).
  * Non-ranked models keep the gateway's original (date) order beneath.
  */
 function modelChoices(models: ModelInfo[], lb: Leaderboard | null): prompts.Choice[] {
@@ -186,8 +186,8 @@ async function chooseAspectRatio(
   const { value } = await ask<'value'>({
     type: 'select',
     name: 'value',
-    message: 'Default aspect ratio (the gateway does not advertise its own — these are general presets):',
-    choices: fallback.ratios.map((r) => ({ title: `${r.value} — ${r.label}`, value: r.value, description: r.description })),
+    message: 'Default aspect ratio (the gateway does not advertise its own, so these are general presets):',
+    choices: fallback.ratios.map((r) => ({ title: `${r.value}: ${r.label}`, value: r.value, description: r.description })),
     initial: initialIdx,
   });
   return { value, supported: null };
@@ -219,7 +219,7 @@ async function askCustomResolution(unit: 'image' | 'video', initialValue: string
     name: 'value',
     message:
       unit === 'image'
-        ? 'Default resolution (custom — e.g. "1024x1024"; check your provider docs for the expected format):'
+        ? 'Default resolution (custom, e.g. "1024x1024"; check your provider docs for the expected format):'
         : 'Default video resolution (e.g. "720p" or "1280x720"):',
     initial: initialValue ?? (unit === 'video' ? '720p' : '1024x1024'),
   });
@@ -234,12 +234,12 @@ async function chooseResolution(
 ): Promise<ResolutionChoice> {
   const fromApi = unit === 'image' ? (gw.imageResolutions?.(model) ?? null) : null;
   if (hasNoResolutionParam(fromApi)) {
-    log(`  ${model} has no resolution parameter — it renders at its native full size; skipping.`);
+    log(`  ${model} has no resolution parameter, so it renders at its native full size; skipping.`);
     return { value: null, supported: [] };
   }
   if (fromApi && fromApi.values.length > 0) return pickAdvertisedResolution(fromApi.values, initialValue);
   if (unit === 'image' && !gw.capabilities.imageResolutionParam) {
-    return { value: null, supported: null }; // e.g. Mistral — no resolution param
+    return { value: null, supported: null }; // e.g. Mistral: no resolution param
   }
   return askCustomResolution(unit, initialValue);
 }
@@ -261,14 +261,14 @@ async function chooseAsyncMode(label: string, initial: boolean): Promise<boolean
 
 /**
  * Image generation: model → (capability prefetch) → async mode → aspect ratio → resolution.
- * Returns the model too — `wizard.ts` needs it for the Mistral orchestrator default.
+ * Returns the model too: `wizard.ts` needs it for the Mistral orchestrator default.
  */
 export async function configureImage(
   gw: Gateway,
   issues: IssueLog,
   prev: AppConfig['image'] | null,
 ): Promise<{ model: ModelInfo | null; config: AppConfig['image'] }> {
-  log('\n— Image generation —');
+  log('\n=== Image generation ===');
   const model = await chooseModel(gw, issues, 'image', null, 'Select the image generation model:', prev?.model ?? null);
   if (!model) {
     issues.add('warning', 'image', 'No image model selected.');
@@ -281,7 +281,7 @@ export async function configureImage(
 /** The per-model image questions (async mode, aspect ratio, resolution) → the finished `image` config. */
 async function askImageOptions(gw: Gateway, model: ModelInfo, prev: AppConfig['image'] | null): Promise<AppConfig['image']> {
   // Pull the model's live capabilities (OpenRouter `supported_parameters`) so the
-  // aspect-ratio / resolution prompts below offer what THIS model takes — and skip
+  // aspect-ratio / resolution prompts below offer what THIS model takes, and skip
   // the resolution question entirely for a model that has no such parameter.
   // Also persists the answer, so the server's first start after configuring needn't wait on it.
   if (gw.prepare) await gw.prepare({ imageModel: model.id, cache: new FileCapabilityCache(CAPABILITY_CACHE_PATH) }).catch(() => undefined);
@@ -334,7 +334,7 @@ async function configureVideoTool(
 
   const model = await chooseModel(gw, issues, toolKey, kind, `Select the ${label} model:`, previousVideoModel(prev));
   if (!model) {
-    issues.add('warning', toolKey, `${label} enabled but no model selected — leaving disabled.`);
+    issues.add('warning', toolKey, `${label} enabled but no model selected; leaving disabled.`);
     return null;
   }
   return askVideoOptions(gw, model, label, prev);
@@ -374,10 +374,10 @@ async function configureVideoSection(
   prev: VideoToolPrev,
 ): Promise<AppConfig['textToVideo'] | null> {
   if (!gw.capabilities[toolKey]) {
-    log(`\n${GATEWAY_LABELS[gateway]} does not support ${kind} — skipping.`);
+    log(`\n${GATEWAY_LABELS[gateway]} does not support ${kind}; skipping.`);
     return null;
   }
-  log(`\n— ${heading} —`);
+  log(`\n=== ${heading} ===`);
   return configureVideoTool(gw, issues, toolKey, kind, prev);
 }
 

@@ -1,25 +1,22 @@
 /**
- * The ONE magic-byte detector for every input the tools accept: images, video
- * containers and OCR documents. Everything else (`detectImageMime`, `sniffImageMime`,
- * media-kind resolution, the Mistral OCR/vision input checks) is built on it, so a
- * format is added in one place. It replaced five ad-hoc sniffers whose drifting
- * coverage sent AVIF to Mistral labelled `image/png` and classified every ISO-BMFF
- * `ftyp` file (AVIF/HEIC included) as video.
+ * The ONE magic-byte detector for every input the tools accept: images and video
+ * containers. Everything else (`detectImageMime`, `sniffImageMime`, media-kind
+ * resolution in `util/inputs.ts`) is built on it, so a format is added in one place.
+ * It replaced five ad-hoc sniffers whose drifting coverage sent AVIF to a provider
+ * labelled `image/png` and classified every ISO-BMFF `ftyp` file (AVIF/HEIC included)
+ * as video.
  *
  * Magic bytes are authoritative: callers must not let a declared mime (data: URL,
  * content-type header) override a detection, and `null` means "not a format we
  * accept", which fail-closed callers refuse.
  */
 
-export type DetectedKind = 'image' | 'video' | 'document';
+export type DetectedKind = 'image' | 'video';
 
 export interface DetectedMedia {
   kind: DetectedKind;
   mime: string;
 }
-
-const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 /** ISO-BMFF brands that make an `ftyp` file a still image rather than a movie. */
 const AVIF_BRANDS = new Set(['avif', 'avis']);
@@ -63,7 +60,7 @@ const PREFIX_SIGNATURES: ReadonlyArray<{ sig: readonly number[]; media: Detected
   { sig: [0x4d, 0x4d, 0x00, 0x2a], media: { kind: 'image', mime: 'image/tiff' } }, // big-endian
 ];
 
-type Detector = (b: Buffer, nameHint: string) => DetectedMedia | null;
+type Detector = (b: Buffer) => DetectedMedia | null;
 
 const detectPrefixSignature: Detector = (b) => PREFIX_SIGNATURES.find((e) => startsWith(b, e.sig))?.media ?? null;
 
@@ -76,7 +73,7 @@ const detectRiff: Detector = (b) => {
   return null;
 };
 
-/** "BM" plus a real DIB header size — a bare "BM" also starts plenty of text. */
+/** "BM" plus a real DIB header size. A bare "BM" also starts plenty of text. */
 const detectBmp: Detector = (b) =>
   b.length >= 18 && b[0] === 0x42 && b[1] === 0x4d && b.readUInt32LE(6) === 0 && BMP_DIB_SIZES.has(b.readUInt32LE(14))
     ? { kind: 'image', mime: 'image/bmp' }
@@ -100,25 +97,14 @@ const detectEbml: Detector = (b) => {
   return { kind: 'video', mime: head.includes('matroska') ? 'video/x-matroska' : 'video/webm' };
 };
 
-/** OCR documents: PDF, and a zip container that `nameHint` resolves to PPTX (default DOCX). */
-const detectDocument: Detector = (b, nameHint) => {
-  if (startsWith(b, [0x25, 0x50, 0x44, 0x46, 0x2d])) return { kind: 'document', mime: 'application/pdf' }; // "%PDF-"
-  if (!startsWith(b, [0x50, 0x4b, 0x03, 0x04])) return null;
-  const ext = /\.([a-z0-9]+)$/i.exec(nameHint)?.[1]?.toLowerCase();
-  return { kind: 'document', mime: ext === 'pptx' ? PPTX_MIME : DOCX_MIME };
-};
-
 /** Tried in order; each family claims only bytes it positively identifies. */
-const DETECTORS: readonly Detector[] = [detectPrefixSignature, detectRiff, detectBmp, detectIco, detectIsoBmff, detectEbml, detectDocument];
+const DETECTORS: readonly Detector[] = [detectPrefixSignature, detectRiff, detectBmp, detectIco, detectIsoBmff, detectEbml];
 
-/**
- * Identify bytes by signature. `nameHint` (a filename) only disambiguates a zip
- * container between DOCX and PPTX; it never makes unrecognised bytes acceptable.
- */
-export function detectMedia(b: Buffer, nameHint = ''): DetectedMedia | null {
+/** Identify bytes by signature: a recognised image or video, else null. */
+export function detectMedia(b: Buffer): DetectedMedia | null {
   if (b.length < 4) return null;
   for (const detect of DETECTORS) {
-    const found = detect(b, nameHint);
+    const found = detect(b);
     if (found) return found;
   }
   return null;
@@ -132,7 +118,7 @@ export function detectImageMime(b: Buffer): string | null {
 
 /**
  * Image mime for bytes a provider returned without one: the detected type, else
- * `image/png` (the providers' de-facto default). Never use this to VALIDATE input —
+ * `image/png` (the providers' de-facto default). Never use this to VALIDATE input:
  * it cannot say "not an image"; use `detectImageMime` for that.
  */
 export function sniffImageMime(b: Buffer): string {

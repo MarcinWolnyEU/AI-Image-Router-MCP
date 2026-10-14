@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AppConfig, loadConfig, resolveToken } from '../config/schema.js';
-import { CAPABILITY_CACHE_PATH, resolvePath } from '../config/paths.js';
+import { CAPABILITY_CACHE_PATH, resolvePath, CONFIGURE_COMMAND } from '../config/paths.js';
 import { FileCapabilityCache } from './capabilityCache.js';
 import { Logger } from '../logging/logger.js';
 import { createGateway } from '../gateways/registry.js';
@@ -78,11 +78,11 @@ export class Runtime {
    * resolution, logger, gateway construction) is resolved into LOCALS first, then
    * committed to the live fields in one synchronous step. A config that fails to
    * apply (missing token file, empty secret, …) therefore leaves the running state
-   * exactly as it was — never `config` describing the new setup while `gateway`,
+   * exactly as it was, never `config` describing the new setup while `gateway`,
    * tokens and HTTP auth are still the old ones.
    */
   private async applyConfig(cfg: AppConfig): Promise<void> {
-    // ---- Phase 1: resolve (may throw — nothing live is touched yet) ----
+    // ---- Phase 1: resolve (may throw, nothing live is touched yet) ----
     const token = await resolveToken(cfg.token);
     // A configured auth token that can't be resolved (or is empty) fails the whole
     // apply: falling back to "no auth" would silently expose the HTTP transport.
@@ -90,11 +90,11 @@ export class Runtime {
     const logger = new Logger(cfg.logging.policy, cfg.logging.dir);
     await logger.init();
     const tinifyToken = await this.resolveTinifyToken(cfg, logger);
-    const gateway = createGateway(cfg.gateway, token, logger);
+    const gateway = createGateway(cfg.gateway, token, logger, { falRelaxSafety: cfg.fal.relaxSafety });
 
     // Nothing below can throw, so the new setup is now certain to be committed.
     // Record raw upstream HTTP failures (status + body) so the log is self-sufficient
-    // for diagnosis — no live API re-probe needed. Bound to the new logger.
+    // for diagnosis, no live API re-probe needed. Bound to the new logger.
     setHttpLogger((f) => {
       logger.warn('HTTP request failed', {
         method: f.method,
@@ -109,8 +109,8 @@ export class Runtime {
     // Warm the gateway's per-model capability cache (OpenRouter: which params the
     // configured image model actually takes) so tool schemas built right after this
     // reflect the model. A persisted answer makes this instant (no network on a warm
-    // start — stdio clients spawn a process per session, Vibe per tool call); only a cold
-    // start waits, and then within a bound — never blocks startup on a slow API for long.
+    // start, stdio clients spawn a process per session, Vibe per tool call); only a cold
+    // start waits, and then within a bound, never blocks startup on a slow API for long.
     if (gateway.prepare) {
       const timeout = new Promise<void>((r) => setTimeout(r, 12_000).unref());
       await Promise.race([
@@ -182,7 +182,7 @@ export class Runtime {
   }
 
   /**
-   * Run `listener` after every SUCCESSFUL reload — used to refresh state derived from
+   * Run `listener` after every SUCCESSFUL reload, used to refresh state derived from
    * the config at registration time (tool schemas built from the gateway + model).
    * Returns an unsubscribe function.
    */
@@ -205,7 +205,7 @@ export class Runtime {
   async getRemover(): Promise<BackgroundRemover> {
     const modelKey = this.config.backgroundRemoval.model;
     if (modelKey === 'none') {
-      throw new Error('Background removal is disabled. Run `npm run configure` and select birefnet-general or birefnet-massive.');
+      throw new Error(`Background removal is disabled. Run \`${CONFIGURE_COMMAND}\` and select birefnet-general or birefnet-massive.`);
     }
     if (this.remover) return this.remover;
     if (this.removerInit) return this.removerInit;
@@ -284,7 +284,7 @@ export class Runtime {
     render?: JobRenderer,
   ): { id: string; status: GenerationJobStatus } {
     const id = randomUUID();
-    // Bind the job to the gateway that runs it — a `restart` mid-job must not
+    // Bind the job to the gateway that runs it, a `restart` mid-job must not
     // re-attribute it (or its failure diagnosis) to a different gateway.
     const gateway = this.gateway;
     const gatewayId = this.config.gateway;
@@ -311,7 +311,7 @@ export class Runtime {
     this.logger.info('generation job: submitted', { id, gateway: gatewayId, model: meta.model, kind });
 
     // Run the blocking gateway call in the background, detached from the client
-    // abort signal (the whole point of async jobs). Never rethrow — capture on job.
+    // abort signal (the whole point of async jobs). Never rethrow, capture on job.
     void (async () => {
       job.status = 'in-progress';
       job.progress = 'in-progress';
@@ -372,7 +372,7 @@ export class Runtime {
   /**
    * The reply for a completed job, rendered at most once: concurrent and repeated
    * polls share one render (no duplicate files, no repeated Tinify billing). After a
-   * successful render the raw media bytes are dropped — the reply is all a poll needs.
+   * successful render the raw media bytes are dropped; the reply is all a poll needs.
    * Resolves undefined when there is nothing to render (no renderer, or the payload
    * was already released from memory).
    */

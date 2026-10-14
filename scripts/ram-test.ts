@@ -1,5 +1,5 @@
 /**
- * ram-test.ts — measure peak process RSS for a BiRefNet background-removal run,
+ * ram-test.ts: measure peak process RSS for a BiRefNet background-removal run,
  * so we can derive a sensible "minimum free RAM" guard per model.
  *
  *   npx tsx scripts/ram-test.ts <birefnet-general|birefnet-massive> [ep] [imagePath]
@@ -34,7 +34,7 @@ function gpuMiBForPid(pid: number): number {
   return 0;
 }
 
-/** Total GPU memory used (MiB) — captures DirectX (DML/WebGPU) allocations that the
+/** Total GPU memory used (MiB); captures DirectX (DML/WebGPU) allocations that the
  *  per-process compute-apps query (CUDA-only) misses. 0 if nvidia-smi is unavailable. */
 function gpuMiBTotalUsed(): number {
   try {

@@ -60,7 +60,7 @@ interface VideoJob {
   label: string;
 }
 
-/** mode -> job. (A mode that is not here is "unknown"; `probe-or` is handled separately — it makes no video.) */
+/** mode -> job. (A mode that is not here is "unknown"; `probe-or` is handled separately; it makes no video.) */
 const JOBS: Record<string, (c: JobContext) => VideoJob> = {
   'eden-i2v': (c) => ({
     gwId: 'edenai',

@@ -8,7 +8,7 @@ from `npm test`** (which runs `unit` then `integration:nonpayment`).
 
 ## Convention
 
-- Place each paid test as `tests/paid/<gateway>.<topic>.test.ts` — the glob
+- Place each paid test as `tests/paid/<gateway>.<topic>.test.ts`; the glob
   `tests/paid/**/*.test.ts` picks them up automatically.
 - Tests must **fail fast if the API token is missing** so a forgetful `npm run
   integration:paid` doesn't burn credit. Read the token from the same default
@@ -20,7 +20,7 @@ from `npm test`** (which runs `unit` then `integration:nonpayment`).
 - Prefer a single test per paid endpoint and keep the total cost / runtime small.
   Reuse the real gateway classes via `createGateway(id, token, logger)` (like
   `scripts/smoke.ts`) rather than going through the full MCP tool for a quick
-  contract check — the tool layer is already covered by `integration:nonpayment`.
+  contract check; the tool layer is already covered by `integration:nonpayment`.
 - Any artifact the test produces should be saved to `output/` for inspection
   (per the project's convention for test runs).
 

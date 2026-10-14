@@ -34,7 +34,7 @@ export type GenerationJobMediaOpts = ImageJobMediaOpts | VideoJobMediaOpts;
 
 /**
  * The tool reply a finished job rendered to (saved-file links, previews, text).
- * Structural on purpose, so `state/` doesn't import `tools/` — a `ToolResult` fits it.
+ * Structural on purpose, so `state/` doesn't import `tools/`: a `ToolResult` fits it.
  */
 export interface RenderedJobResult {
   content: Array<{ type: string; [k: string]: unknown }>;
@@ -67,7 +67,7 @@ export interface GenerationJob {
   progress?: string;
   /** Provider's native remote job id when surfaced (fal request_id, Eden public_id). */
   requestId?: string;
-  /** The raw generation — held only until it is rendered (or released). */
+  /** The raw generation: held only until it is rendered (or released). */
   result?: GenerationResult;
   /** User-facing failure message (failed jobs). */
   error?: string;
@@ -89,7 +89,7 @@ export interface GenerationJob {
   /** The last render failure (the result could not be saved/processed as requested). */
   renderError?: string;
   /**
-   * Raw output written to disk AS-IS because rendering failed — so a paid generation is never
+   * Raw output written to disk AS-IS because rendering failed, so a paid generation is never
    * lost. Only once these exist may the store drop an unrendered `result` from memory.
    */
   rescuedFiles?: string[];
@@ -143,7 +143,7 @@ export function retainedBytes(job: GenerationJob): number {
  * Bounded in-memory generation job store. Active jobs are never touched. Finished
  * jobs keep their media payload for `finishedTtlMs` and within `maxRetainedBytes`;
  * past either bound the payload is RELEASED (raw bytes and inline base64 dropped,
- * the reply's text + file links kept — the files are already on disk), and past
+ * the reply's text + file links kept, the files are already on disk), and past
  * `maxJobs` the oldest finished jobs are deleted outright. A completed job whose raw
  * result was never saved (`isUnsavedResult`) is exempt from all three until the runtime
  * renders it or rescues it to disk.
@@ -194,7 +194,7 @@ export class GenerationJobStore {
       total -= bytes;
       releasePayload(j, 'released to stay within the job-store memory budget');
     }
-    // 3. Count: delete the oldest finished jobs outright — never one holding an unsaved result.
+    // 3. Count: delete the oldest finished jobs outright, never one holding an unsaved result.
     if (this.jobs.size <= this.maxJobs) return;
     const deletable = finished.filter((j) => j.id !== newestId && !isUnsavedResult(j));
     for (const j of deletable.slice(0, this.jobs.size - this.maxJobs)) this.jobs.delete(j.id);
@@ -204,11 +204,11 @@ export class GenerationJobStore {
 /**
  * Drop a finished job's media from memory. A rendered reply keeps its text and file
  * links (small, and the files are on disk) plus a note; inline previews/base64 go.
- * An unsaved raw result is the ONLY copy of a paid generation and is never dropped —
+ * An unsaved raw result is the ONLY copy of a paid generation and is never dropped,
  * only once the runtime has rescued it to disk (`rescuedFiles`).
  */
 function releasePayload(job: GenerationJob, reason: string): void {
-  // A render in flight is about to save the result to disk — let it finish; the next prune sees it.
+  // A render in flight is about to save the result to disk, let it finish; the next prune sees it.
   if (job.released || job.renderInFlight || retainedBytes(job) === 0) return;
   if (isUnsavedResult(job)) return;
   job.result = undefined;

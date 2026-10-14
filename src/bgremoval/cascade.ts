@@ -1,5 +1,5 @@
 /**
- * cascade-wide-ops — rewrite an ONNX model so any Concat with too many inputs, or Split with too
+ * cascade-wide-ops: rewrite an ONNX model so any Concat with too many inputs, or Split with too
  * many outputs, becomes a *cascade* of narrower (≤CHUNK-wide) ops. This keeps every shader's
  * storage-buffer bindings under WebGPU's `maxStorageBuffersPerShaderStage` limit (16 on most
  * adapters), which is what otherwise stops the BiRefNet family (incl. bria-rmbg) from running on
@@ -10,7 +10,7 @@
  * (weights are off-heap typed arrays); no raised --max-old-space-size is required.
  */
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
-import onnxProto from 'onnx-proto'; // CJS module — default import (named export isn't ESM-detectable)
+import onnxProto from 'onnx-proto'; // CJS module: default import (named export isn't ESM-detectable)
 
 const onnx = onnxProto.onnx;
 type INodeProto = onnxProto.onnx.INodeProto;
@@ -113,7 +113,7 @@ function initializersByName(graph: onnxProto.onnx.IGraphProto): Map<string, ITen
   return out;
 }
 
-/** Look up a Split node's size tensor — a Constant-node output or a graph initializer. */
+/** Look up a Split node's size tensor, found as a Constant-node output or a graph initializer. */
 function splitSizeResolver(graph: onnxProto.onnx.IGraphProto): (node: INodeProto) => number[] {
   const constants = constantTensors(graph);
   const inits = initializersByName(graph);

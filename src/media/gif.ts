@@ -4,11 +4,11 @@ import { ssimLuma } from '../util/ssim.js';
 
 /**
  * Local animated-GIF assembly from a sequence of still frames, using `gifenc`
- * (mattdesl) — chosen over `@skyra/gifenc` by an empirical bake-off (see
+ * (mattdesl), chosen over `@skyra/gifenc` by an empirical bake-off (see
  * `output/gifbench/REPORT.md`): zero runtime deps, synchronous, and the only one
  * with a real palette-SIZE knob, which is what makes the quality/size knee below
  * possible (skyra's quality knob is a NeuQuant subsampling factor that does NOT
- * move file size). No vendor SDK and no gateway — this is the `output_format:"gif"`
+ * move file size). No vendor SDK and no gateway: this is the `output_format:"gif"`
  * branch of the `image_to_video` tool.
  *
  * gifenc ships no type defs and is dual CJS/ESM with no `exports` map, so a static
@@ -141,7 +141,7 @@ function binarizeAlpha(rgba: Uint8Array, threshold: number): boolean {
  * Decode every input to RGBA at a common canvas size. Alpha is binarized to 1 bit
  * (GIF has no partial transparency). Each frame is returned as a FRESH, exact-length
  * `Uint8Array` (offset 0, byteLength === 4·w·h) because gifenc reads `rgba.buffer`
- * ignoring byteOffset — a sharp pooled buffer view would corrupt quantization.
+ * ignoring byteOffset, so a sharp pooled buffer view would corrupt quantization.
  */
 async function normalizeFrames(
   inputs: Buffer[],
@@ -288,7 +288,7 @@ function pickKnee(points: Variant[]): Variant {
   const xr = last.bytes - first.bytes || 1;
   const yr = last.ssim - first.ssim;
   if (yr <= 0) {
-    // Quality didn't improve with size — take the highest-SSIM (cheapest on ties).
+    // Quality didn't improve with size: take the highest-SSIM (cheapest on ties).
     return sorted.reduce((best, p) => (p.ssim > best.ssim ? p : best), sorted[0]!);
   }
   let best = sorted[0]!;
@@ -314,7 +314,7 @@ function paletteSizes(maxColors: number): number[] {
 
 /**
  * gifenc collapses the palette to the image's true color count, so several sizes
- * can yield an identical encoding — dedupe by byte length to keep the knee honest.
+ * can yield an identical encoding, so dedupe by byte length to keep the knee honest.
  */
 function dedupeByBytes(variants: Variant[]): Variant[] {
   const seen = new Set<number>();

@@ -1,9 +1,9 @@
 /**
  * Unit tests for the Eden AI gateway over a stubbed `fetch` (no network, no cost):
  *  - image generation uses the SYNC `/v3/universal-ai` endpoint (the async one answers
- *    400 "Not an async feature" for image/generation — the 2026-10-04 review's H1);
+ *    400 "Not an async feature" for image/generation; found in the 2026-10-04 review, H1);
  *  - video model selection rides in `providers` as `<provider>/<model>` (a top-level
- *    `model` field was silently ignored and the provider default was billed — M5);
+ *    `model` field was silently ignored and the provider default was billed, M5);
  *  - an unknown video model is refused BEFORE submitting, from the public catalog;
  *  - the reply names the model Eden says RAN (the result key), not the one asked for.
  */

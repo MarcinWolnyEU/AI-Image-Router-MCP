@@ -2,7 +2,7 @@
  * List all MCP tools exposed by the ai-image-router-mcp server.
  *
  * By default this spawns the server over **stdio** (no running server needed,
- * free — same boot path as `mcp-test.ts`) and prints its `tools/list`. Pass
+ * free, same boot path as `mcp-test.ts`) and prints its `tools/list`. Pass
  * `--http [url]` to instead connect to an already-running Streamable-HTTP server
  * (`npm start -- --http`; default url http://127.0.0.1:8765/mcp).
  *
@@ -103,7 +103,7 @@ function makeTransport(http: URL | null): Transport {
     command: built ? 'node' : process.platform === 'win32' ? 'npx.cmd' : 'npx',
     args: built ? ['dist/index.js'] : ['tsx', 'src/index.ts'],
     cwd: ROOT,
-    // We only introspect the tool list — tell the server not to pre-load the ~970 MB
+    // We only introspect the tool list, so tell the server not to pre-load the ~970 MB
     // background-removal ONNX model. Merge the SDK's default env so PATH/etc. survive.
     env: { ...getDefaultEnvironment(), BG_NO_PREWARM: '1' },
   });
@@ -169,8 +169,8 @@ function makePalette(): Palette {
   const sgr = (code: string): string => (USE_COLOR ? `[${code}m` : '');
   const RESET = sgr('0');
   const BOLD = sgr('1');
-  const C_SEG = sgr('38;5;245'); // the (...) segment punctuation — gray
-  const C_REQ = sgr('38;5;88'); // "required" — dark red
+  const C_SEG = sgr('38;5;245'); // the (...) segment punctuation: gray
+  const C_REQ = sgr('38;5;88'); // "required": dark red
   // A distinct dark shade per JSON type (no reds); a default is painted in its own type's color.
   const TYPE_CODES: Record<string, string> = {
     string: '38;5;240', // dark gray

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { decodeOrientedRgb } from '../src/bgremoval/preprocess.js';
 
-/** 20×10 stored pixels: left half red, right half blue — tagged EXIF orientation 6 (rotate 90° CW to display). */
+/** 20×10 stored pixels: left half red, right half blue, tagged EXIF orientation 6 (rotate 90° CW to display). */
 async function portraitPhoto(): Promise<Buffer> {
   const w = 20;
   const h = 10;

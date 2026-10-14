@@ -110,7 +110,7 @@ export class EdenAiGateway implements Gateway {
 
   /**
    * Eden's video catalog (provider → models + default), fetched lazily and kept for an hour.
-   * The endpoint is public — sending the v3 API key makes it 401 ("Token has no 'exp' claim").
+   * The endpoint is public: sending the v3 API key makes it 401 ("Token has no 'exp' claim").
    * null when it cannot be loaded (callers then stay optimistic).
    */
   private async videoCatalog(signal?: AbortSignal): Promise<Map<string, EdenVideoCatalogEntry> | null> {
@@ -137,7 +137,7 @@ export class EdenAiGateway implements Gateway {
   async checkVideoRequest(params: VideoGenParams): Promise<string | null> {
     const { provider, modelName } = edenVideoTarget(params);
     const catalog = await this.videoCatalog(params.signal);
-    if (!catalog || catalog.size === 0) return null; // catalog unreachable — let the provider validate
+    if (!catalog || catalog.size === 0) return null; // catalog unreachable: let the provider validate
     const entry = catalog.get(provider);
     if (!entry) return `Eden AI has no video provider "${provider}". Available: ${[...catalog.keys()].join(', ')}. Nothing was submitted.`;
     if (modelName && !entry.models.includes(modelName)) {
@@ -248,7 +248,7 @@ async function downloadEdenImages(data: EdenUniversalResponse, signal: AbortSign
   return images;
 }
 
-/** Report the model Eden says RAN (the result key), never just the one asked for — and say when they differ. */
+/** Report the model Eden says RAN (the result key), never just the one asked for, and say when they differ. */
 function ranModel(provider: string, modelName: string | null, modelKey: string | undefined): Pick<VideoGenResult, 'modelUsed' | 'warnings'> {
   const requested = modelName ? `${provider}/${modelName}` : provider;
   const differs = modelName != null && modelKey != null && modelKey !== requested;
@@ -274,7 +274,7 @@ function edenVideoTarget(params: VideoGenParams): { provider: string; modelName:
 }
 
 /**
- * The model rides in `providers` as `<provider>/<model>` — Eden v2's selector (probed
+ * The model rides in `providers` as `<provider>/<model>`, Eden v2's selector (probed
  * 2026-10-04: it switched MiniMax from its default 2.3 to Hailuo-02). A top-level `model`
  * field is silently ignored (the provider default ran and was billed).
  */

@@ -1,7 +1,7 @@
 /**
  * Unit tests for the HTTP retry policy (src/util/http.ts) over a stubbed global
  * `fetch`: a POST may start a BILLED generation, so it is only re-sent when the
- * failure proves it was not processed (429, never-connected) — never on a
+ * failure proves it was not processed (429, never-connected), never on a
  * timeout / 5xx / truncated 200, which are ambiguous. GETs keep full retries.
  * Also: token resolution never yields an empty secret.
  */
@@ -53,7 +53,7 @@ describe('POST (non-idempotent) retry policy', () => {
     assert.equal(calls, 1);
   });
 
-  it('a truncated 200 is NOT re-sent — it was accepted — and the error says so', async () => {
+  it('a truncated 200 is NOT re-sent (it was accepted) and the error says so', async () => {
     stubFetch([text(200, '{"id":"job-1","sta'), json(200, { ok: true })]);
     await assert.rejects(postJson('https://x.test/gen', {}), /NOT re-sent/);
     assert.equal(calls, 1);

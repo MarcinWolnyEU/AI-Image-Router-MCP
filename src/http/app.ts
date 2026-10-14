@@ -28,7 +28,7 @@ interface Session {
   transport: StreamableHTTPServerTransport;
   server: McpServer;
   lastSeen: number;
-  /** Open GET (SSE) streams — a listening client is alive even without new requests. */
+  /** Open GET (SSE) streams: a listening client is alive even without new requests. */
   openStreams: number;
 }
 
@@ -144,7 +144,7 @@ export function createHttpApp(opts: HttpAppOptions): HttpApp {
       sendJsonRpcError(res, 403, -32000, `Forbidden: ${refused}. Without http.authToken only loopback/IP hosts and http.allowedHosts are accepted.`);
       return false;
     }
-    // Shared-secret auth (config.http.authToken). Checked on EVERY request, not just initialize —
+    // Shared-secret auth (config.http.authToken). Checked on EVERY request, not just initialize:
     // a leaked session id alone must not grant access. Plain 401 without an OAuth challenge:
     // Le Chat then offers Bearer / API-key entry instead of trying OAuth discovery.
     if (!isHttpRequestAuthorized(req.headers, authToken)) {
@@ -207,7 +207,7 @@ export function createHttpApp(opts: HttpAppOptions): HttpApp {
     const existing = sessionId ? sessions.get(sessionId) : undefined;
     if (sessionId && !existing) {
       // Unknown/expired session: 404 tells a spec-compliant client to start a new one.
-      sendJsonRpcError(res, 404, -32001, 'Session not found (it expired or the server restarted) — re-initialize.');
+      sendJsonRpcError(res, 404, -32001, 'Session not found (it expired or the server restarted). Re-initialize.');
       return;
     }
     if (existing) existing.lastSeen = now();

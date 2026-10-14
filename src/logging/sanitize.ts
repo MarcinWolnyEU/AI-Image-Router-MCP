@@ -6,12 +6,12 @@
  * log file verbatim, so any base64-looking string or data: URL is collapsed to its
  * first few characters plus its length: `iVBOR(...) [124576 chars]`.
  *
- * Returns a NEW structure — the original args/result are never mutated.
+ * Returns a NEW structure; the original args/result are never mutated.
  */
 
 const PREVIEW_CHARS = 5;
 
-// Long-ish, made up only of base64 alphabet (incl. url-safe + padding) — plus LINE BREAKS,
+// Long-ish, made up only of base64 alphabet (incl. url-safe + padding), plus LINE BREAKS,
 // because MIME/PEM-style encoders wrap at 76 columns (a wrapped multi-MB blob used to land in
 // the log verbatim). Still NO spaces/tabs: allowing them would collapse any long plain-text
 // prompt ("A red fox running through …") into a payload preview.

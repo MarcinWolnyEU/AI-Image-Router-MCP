@@ -80,7 +80,7 @@ describe('transform_media video', { skip: !hasFfmpeg && 'ffmpeg not installed' }
     assert.deepEqual(await codecs(out), ['h264', 'aac']);
   });
 
-  it('output_format mp4 on an mp4 needs no re-encode — the file passes through unchanged', { timeout: FF_TIMEOUT }, async () => {
+  it('output_format mp4 on an mp4 needs no re-encode: the file passes through unchanged', { timeout: FF_TIMEOUT }, async () => {
     const r = await call({ image: mp4Path, output_format: 'mp4' });
     assert.equal(r.isError, undefined, textOf(r));
     const link = r.content.find((c) => c.type === 'resource_link')!;

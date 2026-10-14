@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.MarcinWolnyEU/ai-image-router-mcp",
+  "title": "AI Image Router",
+  "description": "Image and short video via OpenRouter, Mistral, Eden AI, fal.ai, plus local cutouts, GIFs and icons.",
+  "repository": {
+    "url": "https://github.com/MarcinWolnyEU/ai-image-router-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/MarcinWolnyEU/ai-image-router-mcp#readme",
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "ai-image-router-mcp",
+      "version": "1.0.0",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "AIR_MCP_CONFIG",
+          "description": "Path to a config.json made by the setup wizard. Defaults to ~/.ai-image-router-mcp/config.json.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        },
+        {
+          "name": "AIR_MCP_HOME",
+          "description": "Directory for config, token files, downloaded models, logs and generated media. Defaults to ~/.ai-image-router-mcp.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

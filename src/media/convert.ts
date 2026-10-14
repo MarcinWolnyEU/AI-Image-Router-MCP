@@ -36,7 +36,7 @@ export interface ConvertedImage {
 
 /**
  * Convert image bytes to `target`. Uses Tinify when a token is supplied (best
- * compression — the same path `generate_image`'s `output_format` uses), else
+ * compression; the same path `generate_image`'s `output_format` uses), else
  * falls back to local sharp encoding so conversion still works without a key.
  * `sourceMime` lets the Tinify path normalise inputs Tinify can't ingest
  * (gif/bmp/tiff) to PNG first.
@@ -47,7 +47,7 @@ export async function convertImage(bytes: Buffer, target: ImageFormat, opts: Con
     try {
       return { bytes: await tinifyTo(bytes, target, opts.tinifyToken, opts), mimeType, ext: target, tinified: true };
     } catch (err) {
-      // Tinify failed (bad/expired key, quota, network, or a wrong-format answer) — fall back to
+      // Tinify failed (bad/expired key, quota, network, or a wrong-format answer): fall back to
       // local sharp rather than failing the conversion. Logged via the caller's logger (so it
       // lands in the log files); console.error (stderr, never stdout) only when no logger was
       // supplied (tests / standalone use).
@@ -79,7 +79,7 @@ async function tinifyTo(bytes: Buffer, target: ImageFormat, token: string, opts:
   return out;
 }
 
-/** Local sharp encode — the no-key (and Tinify-failure) path. */
+/** Local sharp encode: the no-key (and Tinify-failure) path. */
 function sharpTo(bytes: Buffer, target: ImageFormat): Promise<Buffer> {
   const img = sharp(bytes);
   if (target === 'jpg') return img.jpeg().toBuffer();

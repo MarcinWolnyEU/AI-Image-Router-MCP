@@ -11,7 +11,7 @@
  *    and renders square by default even when the configured default aspect is 4:3.
  *
  * `AIR_MCP_CONFIG` points `loadConfig()` at a temp file, so the real config.json is
- * never read. It must be set BEFORE the src modules load — hence dynamic imports.
+ * never read. It must be set BEFORE the src modules load, hence dynamic imports.
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -150,7 +150,7 @@ describe('generate_image ICO uses the live gateway and renders square', () => {
   });
 
   before(() => {
-    // Configured default aspect is 4:3 (the wizard default) — an icon must still be square.
+    // Configured default aspect is 4:3 (the wizard default); an icon must still be square.
     (runtime.config.image as { defaultAspectRatio: string | null }).defaultAspectRatio = '4:3';
     runtime.config.image.async = false;
   });

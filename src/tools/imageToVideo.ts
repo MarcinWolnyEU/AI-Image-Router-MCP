@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CONFIGURE_COMMAND } from '../config/paths.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runtime } from '../state/runtime.js';
 import { resolveImageInput, resolveReferenceImages } from '../util/inputs.js';
@@ -28,7 +29,7 @@ function imageToVideoDescription(): string {
   const i2vModel = runtime.config.imageToVideo.model;
   return (
     'Turn one or more still images into motion. Two modes via `output_format`:\n' +
-    `• "mp4" (default) animates the reference image(s) with the configured image-to-video model${i2vModel ? ` (${i2vModel})` : ''} — long-running (often minutes), costs money, AI-generated motion.\n` +
+    `• "mp4" (default) animates the reference image(s) with the configured image-to-video model${i2vModel ? ` (${i2vModel})` : ''}: long-running (often minutes), costs money, AI-generated motion.\n` +
     '• "gif" assembles the supplied frames locally into an animated GIF (no model, no cost, instant): the ordered frames are `image` (first), then `images_inner` (middle, in order), then `image_last`. Provide at least two of them. ' +
     'GIF supports per-frame timing (see `fps`), looping, 1-bit transparency, and an automatic palette/size optimization.\n' +
     'Every image input may be a file path, http(s) URL, data: URL, or base64.'
@@ -51,7 +52,7 @@ export function registerImageToVideo(server: McpServer): void {
         reference_images: z.array(z.string()).optional().describe('mp4 only: additional reference/subject images (for multi-reference models).'),
         model: z.string().optional().describe(`mp4 only: override the configured image-to-video model. ${MODEL_OVERRIDE_DEFAULTS_NOTE}`),
         resolution: z.string().optional().describe('mp4 only: override the default resolution (e.g. "720p", "1080P").'),
-        fps: fpsSchema.optional().describe('Frames per second. A single number applies to all frames. For gif you may pass an ARRAY (one fps per frame; length must equal the frame count) for per-frame timing — each frame shows for 1000/fps ms (GIF granularity is 10 ms).'),
+        fps: fpsSchema.optional().describe('Frames per second. A single number applies to all frames. For gif you may pass an ARRAY (one fps per frame; length must equal the frame count) for per-frame timing: each frame shows for 1000/fps ms (GIF granularity is 10 ms).'),
         duration: z.number().optional().describe('mp4 only: override the default duration in seconds.'),
         aspect_ratio: z.string().optional().describe(`mp4 only: ${VIDEO_ASPECT_RATIO_DESCRIPTION}`),
         provider_options: z.record(z.string(), z.any()).optional().describe('mp4 only: raw gateway-specific request fields (e.g. a model-native end-frame field, seed, camera commands), merged into the request.'),
@@ -66,7 +67,7 @@ export function registerImageToVideo(server: McpServer): void {
       },
     },
     async (args, extra): Promise<ToolResult> => {
-      // Poll mode first — works for mp4 jobs (gif is always local/synchronous).
+      // Poll mode first; it works for mp4 jobs (gif is always local/synchronous).
       const jobId = (args.job_id as string | undefined)?.trim();
       if (jobId) {
         return pollVideoJob(jobId, 'image-to-video', 'image-to-video', 'image_to_video');
@@ -93,7 +94,7 @@ async function handleGif(args: GifArgs): Promise<ToolResult> {
       return errorResult('GIF output needs at least 2 frames. Supply them via `image` (first), `images_inner` (ordered middle frames), and/or `image_last`.');
     }
 
-    // save:false writes nothing — not the GIF, and not `z-download-` copies of remote frames.
+    // save:false writes nothing: not the GIF, and not `z-download-` copies of remote frames.
     const output = resolveOutputOptions(args);
 
     const frames = await resolveGifFrames(inputs, output.save);
@@ -190,7 +191,7 @@ async function renderGifResult(result: GifEncodeResult, output: { outputMode: Ou
     previewMaxBytes: runtime.config.output.previewMaxBytes,
     description: 'Animated GIF',
   });
-  lines.unshift(saved ? saved.path : 'Built the GIF — not saved (save:false).');
+  lines.unshift(saved ? saved.path : 'Built the GIF; not saved (save:false).');
   return { content: [{ type: 'text', text: lines.join('\n') }, ...media] };
 }
 
@@ -219,7 +220,7 @@ function validateImageToVideo(args: VideoArgs): Step<{ gateway: VideoGateway; mo
     return stepFail('An fps array is only supported for GIF output (output_format:"gif"). For mp4, pass a single fps number.');
   }
   const model = args.model ?? runtime.config.imageToVideo.model;
-  if (!model) return stepFail('No image-to-video model is configured. Run `npm run configure` to enable it (or pass an explicit `model`).');
+  if (!model) return stepFail(`No image-to-video model is configured. Run \`${CONFIGURE_COMMAND}\` to enable it (or pass an explicit \`model\`).`);
   return stepOk({ gateway, model, image: args.image });
 }
 
@@ -274,7 +275,7 @@ async function resolveVideoReferences(args: VideoArgs, firstFrame: string): Prom
   if (allowMulti || refs.length <= 1) return stepOk(refs);
   return stepFail(
     `The configured image-to-video model (${runtime.config.imageToVideo.model}) takes a single image, so ` +
-      '`image_last` / `reference_images` would be ignored. Nothing was submitted — remove them, or pass `model` to target a model that takes several frames.',
+      '`image_last` / `reference_images` would be ignored. Nothing was submitted. Remove them, or pass `model` to target a model that takes several frames.',
   );
 }
 

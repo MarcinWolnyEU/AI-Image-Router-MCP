@@ -8,7 +8,7 @@ import { writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import prompts from 'prompts';
 import { BG_MODELS, providerAvailable, resolveExecutionProvider, type BgExecutionProvider, type BgModelKey } from '../bgremoval/models.js';
-import { fromRoot, resolvePath } from './paths.js';
+import { fromHome, resolvePath } from './paths.js';
 import { AppConfig, configSchema, HTTP_AUTH_TOKEN_FILE, TINIFY_TOKEN_FILE } from './schema.js';
 import { memInfo, gpuInfo, type GpuInfo } from '../util/sysinfo.js';
 import { ask, askTokenSource, choiceIndex, log } from './wizardPrompt.js';
@@ -34,8 +34,8 @@ function bgModelAnnotation(key: BgModelKey, ep: BgExecutionProvider, freeRamMB: 
   const u = spec.usage[ep];
   const cpuRam = gbOfRam(spec.usage.cpu?.ramMB);
 
-  if (!u) return `untested on ${ep.toUpperCase()} — CPU needs ~${cpuRam}`;
-  if (!u.runs) return `✗ won't run on ${ep.toUpperCase()} (${u.note ?? 'unsupported ops'}) — use CPU (~${cpuRam})`;
+  if (!u) return `untested on ${ep.toUpperCase()}, CPU needs ~${cpuRam}`;
+  if (!u.runs) return `✗ won't run on ${ep.toUpperCase()} (${u.note ?? 'unsupported ops'}), use CPU (~${cpuRam})`;
   const parts = [gbOfRam(u.ramMB), gbOfVram(u.vramMB)].filter(Boolean);
   return `✓ ~${parts.join(' · ~')}${u.note ? ` (${u.note})` : ''}${fitWarnings(u, freeRamMB, gpu)}`;
 }
@@ -56,9 +56,9 @@ async function chooseExecutionProvider(prev: AppConfig['backgroundRemoval']['exe
   const autoEP = resolveExecutionProvider('auto');
   const platformDefault = { webgpu: 'WebGPU', coreml: 'CoreML', cuda: 'CUDA', dml: 'DirectML', cpu: 'CPU' }[autoEP];
   // Only the providers the bundled onnxruntime ships HERE (CUDA = Linux x64, CoreML = macOS,
-  // DirectML = Windows) — picking one that isn't there silently ran on CPU.
+  // DirectML = Windows), picking one that isn't there silently ran on CPU.
   const epChoices = [
-    { title: `auto (recommended — ${platformDefault})`, value: 'auto' },
+    { title: `auto (recommended: ${platformDefault})`, value: 'auto' },
     { title: 'WebGPU (Windows/Linux x64/macOS, GPU)', value: 'webgpu' },
     { title: 'DirectML (Windows DirectX 12, GPU)', value: 'dml' },
     { title: 'CUDA (Linux x64 GPU, needs CUDA 12 + cuDNN 9)', value: 'cuda' },
@@ -75,7 +75,7 @@ async function chooseExecutionProvider(prev: AppConfig['backgroundRemoval']['exe
   return ep as AppConfig['backgroundRemoval']['executionProvider'];
 }
 
-const BG_MODEL_ORDER: BgModelKey[] = ['birefnet-general', 'birefnet-massive', 'bria-rmbg', 'isnet-general-use', 'ben2-base'];
+const BG_MODEL_ORDER: BgModelKey[] = ['birefnet-general', 'birefnet-massive', 'bria-rmbg', 'isnet-general-use', 'ben2-base', 'finegrain-box-segmenter'];
 
 /**
  * Default to the previously-configured model ('none' is the last choice), else
@@ -87,7 +87,7 @@ function bgModelInitial(prevBg: string | undefined, recommended: BgModelKey): nu
   return Math.max(0, BG_MODEL_ORDER.indexOf(recommended));
 }
 
-/** Model second — annotated with empirical RAM/VRAM for the chosen provider. */
+/** Model second, annotated with empirical RAM/VRAM for the chosen provider. */
 async function chooseBgModel(
   bgEP: AppConfig['backgroundRemoval']['executionProvider'],
   effEP: BgExecutionProvider,
@@ -96,7 +96,7 @@ async function chooseBgModel(
 ): Promise<AppConfig['backgroundRemoval']['model']> {
   const recommended: BgModelKey = effEP === 'cpu' ? 'birefnet-general' : 'isnet-general-use';
   const choices = BG_MODEL_ORDER.map((key) => ({
-    title: `${BG_MODELS[key].label}${key === recommended ? ' (recommended)' : ''} — ${bgModelAnnotation(key, effEP, machine.freeMB, machine.gpu)}`,
+    title: `${BG_MODELS[key].label}${key === recommended ? ' (recommended)' : ''}: ${bgModelAnnotation(key, effEP, machine.freeMB, machine.gpu)}`,
     value: key as string,
   }));
   choices.push({ title: 'none (disable the tool)', value: 'none' });
@@ -114,9 +114,9 @@ async function chooseBgModel(
 }
 
 export async function configureBackgroundRemoval(existing: AppConfig | null): Promise<AppConfig['backgroundRemoval']> {
-  log('\n— Background removal (runs locally via ONNX) —');
+  log('\n=== Background removal (runs locally via ONNX) ===');
   const machine = await showMachineInfo();
-  // EP first — so per-model RAM/VRAM can be shown for the chosen provider.
+  // EP first, so per-model RAM/VRAM can be shown for the chosen provider.
   const prev = existing?.backgroundRemoval;
   const executionProvider = await chooseExecutionProvider(prev?.executionProvider);
   const model = await chooseBgModel(executionProvider, resolveExecutionProvider(executionProvider), prev?.model, machine);
@@ -124,16 +124,38 @@ export async function configureBackgroundRemoval(existing: AppConfig | null): Pr
 }
 
 // ---------------------------------------------------------------------------
+// fal safety settings
+// ---------------------------------------------------------------------------
+
+/** fal only: ask once whether to relax fal's safety settings. Off unless the user says yes. */
+export async function configureFalSafety(gateway: AppConfig['gateway'], existing: AppConfig | null): Promise<AppConfig['fal']> {
+  if (gateway !== 'fal') return { relaxSafety: existing?.fal.relaxSafety ?? false };
+  log('\n=== fal safety settings ===');
+  log('  By default fal applies its own safety checker. Turning this on sends enable_safety_checker:false and');
+  log('  safety_tolerance:"5" (most permissive) to the fal image models that accept those fields.');
+  log('  You are responsible for what you generate with it on.');
+  const { relaxSafety } = await ask<'relaxSafety'>({
+    type: 'toggle',
+    name: 'relaxSafety',
+    message: 'Relax fal safety settings?',
+    initial: existing?.fal.relaxSafety ?? false,
+    active: 'yes',
+    inactive: 'no',
+  });
+  return { relaxSafety };
+}
+
+// ---------------------------------------------------------------------------
 // Tinify
 // ---------------------------------------------------------------------------
 
 export async function configureTinify(existing: AppConfig | null): Promise<AppConfig['tinify']> {
-  log('\n— Image compression (Tinify, optional) —');
-  const tinifyFileExists = existsSync(fromRoot(TINIFY_TOKEN_FILE));
+  log('\n=== Image compression (Tinify, optional) ===');
+  const tinifyFileExists = existsSync(fromHome(TINIFY_TOKEN_FILE));
   const { useTinify } = await ask<'useTinify'>({
     type: 'toggle',
     name: 'useTinify',
-    message: `Enable Tinify (compress PNGs + WebP output in generate_image)?${tinifyFileExists ? ` — found ${TINIFY_TOKEN_FILE}` : ''}`,
+    message: `Enable Tinify (compress PNGs + WebP output in generate_image)?${tinifyFileExists ? ` (found ${TINIFY_TOKEN_FILE})` : ''}`,
     initial: existing ? existing.tinify !== null : tinifyFileExists,
     active: 'yes',
     inactive: 'no',
@@ -165,10 +187,10 @@ const LOGGING_DEFAULTS = configSchema.shape.logging.parse(undefined);
 export async function configureOutput(existing: AppConfig | null): Promise<{ output: AppConfig['output']; logging: AppConfig['logging'] }> {
   const prevOutput = existing?.output ?? OUTPUT_DEFAULTS;
   const prevLogging = existing?.logging ?? LOGGING_DEFAULTS;
-  log('\n— Logging & output —');
+  log('\n=== Logging & output ===');
   const logChoices = [
-    { title: 'today — keep only the current day’s log (default)', value: 'today' },
-    { title: 'persistent daily — keep one log file per day', value: 'persistent-daily' },
+    { title: 'today: keep only the log for the current day (default)', value: 'today' },
+    { title: 'persistent daily: keep one log file per day', value: 'persistent-daily' },
     { title: 'no logs (stderr only)', value: 'none' },
   ];
   const { logPolicy } = await ask<'logPolicy'>({
@@ -191,7 +213,7 @@ export async function configureOutput(existing: AppConfig | null): Promise<{ out
 // ---------------------------------------------------------------------------
 
 async function chooseHttpTransport(existingEnabled: boolean): Promise<boolean> {
-  log('\n— Transport —');
+  log('\n=== Transport ===');
   log('How MCP clients connect to this server. stdio suits virtually all local use;');
   log('HTTP is a niche choice for remote / networked deployments (details per option).');
   const { transport } = await ask<'transport'>({
@@ -244,7 +266,7 @@ async function chooseHttpAuth(current: AppConfig['http']['authToken']): Promise<
   const { requireAuth } = await ask<'requireAuth'>({
     type: 'confirm',
     name: 'requireAuth',
-    message: 'Require a bearer token on /mcp? (strongly recommended if the port is exposed, e.g. via a tunnel — tools read local files)',
+    message: 'Require a bearer token on /mcp? (strongly recommended if the port is exposed, e.g. via a tunnel; tools read local files)',
     initial: true,
   });
   if (!requireAuth) return null;

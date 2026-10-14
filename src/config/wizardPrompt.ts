@@ -20,7 +20,7 @@ export async function ask<T extends string>(question: prompts.PromptObject<T>): 
   return prompts(question, { onCancel });
 }
 
-/** Issues collected while pulling data — stored in config.diagnostics. */
+/** Issues collected while pulling data, stored in config.diagnostics. */
 export class IssueLog {
   issues: Diagnostics['issues'] = [];
   sources: Diagnostics['sources'] = {};
@@ -31,7 +31,7 @@ export class IssueLog {
   recordSource(tool: string, r: ListModelsResult): void {
     this.sources[tool] = { listed: r.models.length > 0, source: r.source, count: r.models.length };
     for (const w of r.warnings) this.add('warning', tool, w);
-    // Informational by design (e.g. "fal has no model-list API") — shown, never recorded as an
+    // Informational by design (e.g. "fal has no model-list API"), shown, never recorded as an
     // issue, so health_status does not report "Configuration-time issues" for a healthy setup.
     for (const n of r.notes ?? []) log(`  ℹ️  ${n}`);
   }

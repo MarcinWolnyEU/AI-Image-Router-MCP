@@ -1,4 +1,5 @@
 import { runtime } from '../state/runtime.js';
+import { CONFIGURE_COMMAND } from '../config/paths.js';
 import { resolveReferenceImages } from '../util/inputs.js';
 import { aspectRatioValue } from '../util/aspect.js';
 import type { Gateway, ImageGenParams, ReferenceMode, ReferenceSemantics } from '../gateways/types.js';
@@ -29,7 +30,7 @@ const refuse = (message: string, causes?: string[]): Refusal => ({ ok: false, re
 
 /** The shape of a validated request, ready to submit (async) or run (sync). */
 export interface ImageRequest {
-  /** The LIVE gateway at call time — never one captured at registration. */
+  /** The LIVE gateway at call time, never one captured at registration. */
   gateway: Gateway;
   params: ImageGenParams;
   /** Output settings; snapshotted into an async job and used to render a sync result. */
@@ -47,7 +48,7 @@ export type Phases = Record<string, number>;
 
 /**
  * Aspect ratio for an ICO render when the caller gave none: square when the model takes
- * '1:1' (or advertises no ratio list to check against), else the configured default —
+ * '1:1' (or advertises no ratio list to check against), else the configured default;
  * `fitSquare` pads a non-square result either way.
  */
 function squareAspectFor(gateway: Gateway, model: string, fallback: string | null): string | null {
@@ -105,7 +106,7 @@ function resolveBasics(a: Args, gateway: Gateway, configuredModel: string | null
     return refuse('The configured gateway does not support image generation.');
   }
   if (!configuredModel) {
-    return refuse('No image model is configured. Run `npm run configure`.');
+    return refuse(`No image model is configured. Run \`${CONFIGURE_COMMAND}\`.`);
   }
   const prompt = (a['prompt'] as string | undefined)?.trim();
   if (!prompt) {
@@ -148,7 +149,7 @@ function planOutput(a: Args, gateway: Gateway, model: string, cfg: Config): Chec
   const aspectRatio = resolveAspectRatio(a, format, gateway, model, cfg);
   // `width` is the primary pixel size; `height` defaults to width (square) for ico,
   // else is derived from `width` × `aspect_ratio`. A lone `height` derives the width the
-  // same way — every gateway's size mapping keys on width, so it used to be dropped.
+  // same way; every gateway's size mapping keys on width, so it used to be dropped.
   const width = (a['width'] as number | undefined) ?? (format === 'ico' ? 256 : widthFromHeight(a, aspectRatio));
   const badWidth = refuseDisallowedIcoWidth(format, width);
   if (badWidth) return badWidth;
@@ -166,7 +167,7 @@ function planOutput(a: Args, gateway: Gateway, model: string, cfg: Config): Chec
 
 /**
  * An icon is square, so for ico the configured default aspect (often 4:3) is NOT
- * applied — only an explicit `aspect_ratio`/`height` makes the render non-square.
+ * applied. Only an explicit `aspect_ratio`/`height` makes the render non-square.
  */
 function resolveAspectRatio(a: Args, format: OutputFormat | null, gateway: Gateway, model: string, cfg: Config): string | null {
   const explicit = a['aspect_ratio'] as string | undefined;
@@ -224,7 +225,7 @@ function unsupportedReferenceMode(model: string, mode: ReferenceMode, semantics:
     [
       semantics.note ?? `This model only provides "${semantics.native}" reference semantics.`,
       mode === 'subject'
-        ? 'For subject/geometry conditioning use an image-edit model (e.g. `fal-ai/flux-2-pro/edit` on fal, or an OpenRouter image model — its `input_references` are image-to-image).'
+        ? 'For subject/geometry conditioning use an image-edit model (e.g. `fal-ai/flux-2-pro/edit` on fal, or an OpenRouter image model, whose `input_references` are image-to-image).'
         : `Use reference_mode:"${semantics.native}", or omit reference_mode to accept the model's native behaviour.`,
     ],
   );
@@ -252,7 +253,7 @@ function planReferenceMode(plan: ReferencePlan, gateway: Gateway, model: string)
     return refuse('The configured model does not support reference images.');
   }
   // A gateway that ANSWERS per model and says null means "this model has no conditioning
-  // input" (fal FLUX schnell, Recraft…). Refuse here, before submitting — the gateway's own
+  // input" (fal FLUX schnell, Recraft…). Refuse here, before submitting; the gateway's own
   // refusal used to arrive only on the first poll of an already-created job.
   if (!semantics && gateway.referenceSemantics) {
     return refuse(
@@ -293,7 +294,7 @@ function compileRequestConstraints(a: Args, referenceSteer: string | undefined):
 
 /**
  * A transparent background on a model whose native `background` enum lacks it
- * (gpt-image-2.5: auto|opaque) can't be honoured — refuse it here, before the
+ * (gpt-image-2.5: auto|opaque) can't be honoured: refuse it here, before the
  * job is submitted, rather than letting it fail inside a background job.
  */
 function refuseUnsupportedTransparency(constraints: CompiledConstraints, gateway: Gateway, model: string): Refusal | null {
@@ -301,7 +302,7 @@ function refuseUnsupportedTransparency(constraints: CompiledConstraints, gateway
   if (constraints.background?.kind !== 'transparent' || !nativeBg || nativeBg.values.includes('transparent')) return null;
   return refuse(
     `The configured model (${model}) cannot produce a transparent background` +
-      (nativeBg.values.length > 0 ? ` — its \`background\` parameter accepts only ${nativeBg.values.join(', ')}.` : ' — it has no native background field.') +
+      (nativeBg.values.length > 0 ? `: its \`background\` parameter accepts only ${nativeBg.values.join(', ')}.` : ': it has no native background field.') +
       ' Nothing was generated.',
     [
       'Generate on a flat, high-contrast colour (e.g. background:"#00ff00") and run `remove_background` on the result to get a transparent PNG.',
@@ -400,7 +401,7 @@ function constraintFields(constraints: CompiledConstraints): Partial<ImageGenPar
  * ICO with a model that only exposes resolution tiers (Eden/OpenRouter): pick the
  * smallest tier ≥ width so we can downscale, never upscale. Gateways that accept
  * exact pixel `image_size` (fal object) get width/height directly and skip this.
- * Uses the LIVE gateway, never one captured at registration — after a
+ * Uses the LIVE gateway, never one captured at registration: after a
  * `restart` that one no longer knows the configured model.
  */
 function applyIcoResolution(params: ImageGenParams, format: OutputFormat | null, gateway: Gateway, model: string): void {

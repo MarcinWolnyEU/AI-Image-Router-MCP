@@ -133,7 +133,7 @@ export async function startMcpHarness(opts: McpHarnessOptions): Promise<McpHarne
   const server = buildServer();
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: opts.clientName, version: '1.0.0' });
-  // The server must be listening first — the client's initialize is routed to it.
+  // The server must be listening first: the client's initialize is routed to it.
   await server.connect(serverTransport);
   await client.connect(clientTransport);
 

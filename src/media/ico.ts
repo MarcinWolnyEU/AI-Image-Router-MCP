@@ -1,5 +1,5 @@
 /**
- * ICO (.ico) encoding built on `@fiahfy/ico` — a zero-native-dep ICO parser +
+ * ICO (.ico) encoding built on `@fiahfy/ico`, a zero-native-dep ICO parser +
  * builder (it embeds a pure-JS pngjs). We use it to output Windows icons that
  * are readable on Windows 98 → XP → Vista → 11, Linux and macOS: `@fiahfy/ico`
  * encodes every entry as a classic 32-bpp BMP/DIB + AND mask (the most
@@ -27,7 +27,7 @@ export const ICO_MIME = 'image/x-icon';
 
 // `IcoImage.fromPNG` validates the source width against this shared allowlist;
 // widen it to our full set. (The property is `static readonly` on the array
-// *reference*, but the array itself is mutable — splice, don't reassign.)
+// *reference*, but the array itself is mutable: splice, don't reassign.)
 Ico.supportedIconSizes.splice(0, Ico.supportedIconSizes.length, ...ICO_ALLOWED_SIZES);
 
 export function isAllowedIcoSize(size: number): size is IcoSize {
@@ -48,7 +48,7 @@ export function icoImageFromPng(png: Buffer): IcoImage {
 
 /**
  * One decoded ICO entry: its pixel size, where it came from, and top-down RGBA.
- * Produced by our own `parseIco` — not the one in `@fiahfy/ico`, which only
+ * Produced by our own `parseIco`, not the one in `@fiahfy/ico`, which only
  * understands 32-bpp DIB entries and misreads the PNG-compressed 256px entries
  * that most Vista+ favicons carry.
  */
@@ -63,7 +63,7 @@ export interface IcoEntry {
   rgba: Buffer;
 }
 
-/** Largest entry dimension we decode — real icons stop at 256 (PNG entries rarely exceed 1024). */
+/** Largest entry dimension we decode. Real icons stop at 256 (PNG entries rarely exceed 1024). */
 const ICO_MAX_ENTRY_PX = 4096;
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -227,7 +227,7 @@ function decodeDibEntry(data: Buffer, i: number, dirW: number, dirH: number): Ic
     const row = dibRowAt(l.xorAt, l.xorStride, y, h.height, h.topDown);
     for (let x = 0; x < h.width; x++) readPixel(rgba, (y * h.width + x) * 4, row, x);
   }
-  // The AND mask is the transparency for everything below 32 bpp — and for legacy 32-bpp
+  // The AND mask is the transparency for everything below 32 bpp, and for legacy 32-bpp
   // entries whose alpha channel was left all zero (they would otherwise be invisible).
   if (l.hasMask && (h.bpp !== 32 || !hasAnyAlpha(rgba))) applyAndMask(rgba, data, h, l);
   return { width: h.width, height: h.height, encoding: 'dib', bitCount: h.bpp, rgba };
@@ -275,7 +275,7 @@ export type SquareFit = 'pad' | 'crop';
 export interface SquareFitResult {
   /** The square PNG at exactly `size` x `size`. */
   bytes: Buffer;
-  /** What was actually done — `none` when the source was already square. */
+  /** What was actually done: `none` when the source was already square. */
   applied: 'none' | 'pad' | 'crop';
   sourceWidth: number;
   sourceHeight: number;
@@ -297,7 +297,7 @@ function padBackground(spec?: string): { r: number; g: number; b: number; alpha:
 /**
  * Fit an arbitrary image to a square `size`.
  *
- * `fit:'pad'` (DEFAULT) letterboxes the whole image onto a square canvas — the
+ * `fit:'pad'` (DEFAULT) letterboxes the whole image onto a square canvas, so the
  * complete subject survives, which is what "make this an icon" almost always
  * means; an off-centre subject in a wide render used to be silently sliced off
  * by the old center-crop. `fit:'crop'` restores the center-crop when the caller
@@ -317,7 +317,7 @@ export async function fitSquare(
 }
 
 /**
- * The same geometry as `fitSquare` WITHOUT the ICO size allowlist — for square
+ * The same geometry as `fitSquare` WITHOUT the ICO size allowlist, for square
  * outputs that are not (or not yet) icon entries, e.g. the members of an icon
  * set that is emitted as plain images.
  */
@@ -327,7 +327,7 @@ export async function fitToSquare(bytes: Buffer, size: number, opts: { fit?: Squ
   const h = meta.height ?? 0;
   if (w === 0 || h === 0) throw new Error('could not read image dimensions.');
 
-  // Already square — no pad/crop decision exists, just (maybe) downscale.
+  // Already square: no pad/crop decision exists, just (maybe) downscale.
   if (w === h) return fitAlreadySquare(bytes, w, size);
   return (opts.fit ?? 'pad') === 'crop' ? fitByCrop(bytes, w, h, size) : fitByPad(bytes, w, h, size, opts.background);
 }
@@ -366,7 +366,7 @@ async function fitByCrop(bytes: Buffer, w: number, h: number, size: number): Pro
     sourceWidth: w,
     sourceHeight: h,
     note:
-      `source ${w}x${h} is not square — center-cropped to ${s}x${s}, dropping ${droppedPct}% of the ` +
+      `source ${w}x${h} is not square, so it was center-cropped to ${s}x${s}, dropping ${droppedPct}% of the ` +
       `${w > h ? 'width' : 'height'} (content outside the centre is lost). Use square_fit:"pad" to keep the whole image.`,
   };
 }
@@ -386,14 +386,14 @@ async function fitByPad(bytes: Buffer, w: number, h: number, size: number, backg
     sourceWidth: w,
     sourceHeight: h,
     note:
-      `source ${w}x${h} is not square — the whole image was fitted onto a ${size}x${size} canvas with ${bgDesc}; ` +
+      `source ${w}x${h} is not square, so the whole image was fitted onto a ${size}x${size} canvas with ${bgDesc}; ` +
       'no content was cropped. Use square_fit:"crop" to center-crop instead.',
   };
 }
 
 /**
  * Validate an image is square AND an allowed ICO size, and return that size.
- * Used by `transform_media` ico, which does NOT resize — inputs must already be
+ * Used by `transform_media` ico, which does NOT resize: inputs must already be
  * a usable (square, allowed) size, unlike `generate_image` (which downscales).
  */
 export async function icoSizeOfSquare(bytes: Buffer): Promise<number> {
@@ -420,7 +420,7 @@ export function resolutionPixels(value: string): number | null {
 
 /**
  * Choose a model resolution string whose pixel size is the smallest that is still
- * ≥ `targetPx` (so we always downscale, never upscale — the "closest allowed size
+ * ≥ `targetPx` (so we always downscale, never upscale: the "closest allowed size
  * above it" rule). Falls back to the largest parseable size, then null (model
  * default) if nothing parses. `@fiahfy`/gateway resolution strings are per-model.
  */

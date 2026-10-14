@@ -1,0 +1,26 @@
+{
+  "name": "ai-image-router-mcp",
+  "description": "Image and short-video toolkit for web projects: generation through OpenRouter, Mistral, Eden AI or fal.ai, plus local background removal, GIF assembly, icon sets, cropping and format conversion.",
+  "author": { "name": "Marcin Wolny" },
+  "homepage": "https://github.com/MarcinWolnyEU/ai-image-router-mcp#readme",
+  "repository": "https://github.com/MarcinWolnyEU/ai-image-router-mcp",
+  "license": "MIT",
+  "keywords": ["image-generation", "image-to-video", "text-to-video", "background-removal", "favicon", "ico", "gif", "openrouter", "fal", "mistral", "edenai", "web-design"],
+  "mcpServers": "mcp.json",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "AIR_MCP_CONFIG": {
+        "type": "string",
+        "title": "Path to config.json (optional)",
+        "description": "Absolute path to a config.json made by the setup wizard (npx -p ai-image-router-mcp ai-image-router-mcp-configure). Leave empty to use ~/.ai-image-router-mcp/config.json."
+      },
+      "AIR_MCP_HOME": {
+        "type": "string",
+        "title": "Data directory (optional)",
+        "description": "Where config, token files, downloaded models, logs and generated media are kept. Leave empty to use ~/.ai-image-router-mcp."
+      }
+    },
+    "required": []
+  }
+}

@@ -111,7 +111,7 @@ async function realWorldFavicon(): Promise<Buffer> {
   return rawIco([{ size: 256, bitCount: 32, data: png256 }, { size: 16, bitCount: 8, data: dib16 }]);
 }
 
-describe('parseIco — real-world entry encodings (PNG-compressed, paletted, 24-bpp, legacy alpha)', () => {
+describe('parseIco: real-world entry encodings (PNG-compressed, paletted, 24-bpp, legacy alpha)', () => {
   it('decodes a PNG-compressed 256px entry next to an 8-bpp paletted 16px entry', async () => {
     const layers = await icoLayers(await realWorldFavicon());
     assert.deepEqual(layers.map((l) => `${l.width}x${l.height}`), ['256x256', '16x16']);
@@ -229,11 +229,22 @@ describe('resolution size selection (pickGenerationResolution / resolutionPixels
 describe('fal buildFalImageInput (per-model request defaults)', () => {
   const base = { prompt: 'x', aspectRatio: '1:1', resolution: null, n: null, temperature: null, topP: null, edenProvider: null };
 
-  it('FLUX-family seeds output_format png, safety_tolerance 5, enable_safety_checker false', () => {
+  it('FLUX-family seeds output_format png and, by default, NO safety overrides', () => {
     const input = buildFalImageInput({ ...base, model: 'fal-ai/flux-2-pro' } as never);
     assert.equal(input['output_format'], 'png');
-    assert.equal(input['safety_tolerance'], '5'); // 1 = most strict … 5 = most permissive
-    assert.equal(input['enable_safety_checker'], false);
+    assert.equal(input['safety_tolerance'], undefined);
+    assert.equal(input['enable_safety_checker'], undefined);
+  });
+
+  it('relaxSafety (opt-in) seeds safety_tolerance 5 and enable_safety_checker false where the model has them', () => {
+    const flux = buildFalImageInput({ ...base, model: 'fal-ai/flux-2-pro' } as never, { relaxSafety: true });
+    assert.equal(flux['safety_tolerance'], '5'); // 1 = most strict … 5 = most permissive
+    assert.equal(flux['enable_safety_checker'], false);
+    const recraft = buildFalImageInput({ ...base, model: 'fal-ai/recraft/v3/text-to-image' } as never, { relaxSafety: true });
+    assert.equal(recraft['enable_safety_checker'], false);
+    assert.equal(recraft['safety_tolerance'], undefined); // Recraft carries no safety_tolerance
+    const krea = buildFalImageInput({ ...base, model: 'krea/v2/medium/text-to-image' } as never, { relaxSafety: true });
+    assert.equal(krea['enable_safety_checker'], undefined); // Krea carries neither field
   });
 
   it('Krea 2 sends NO output_format/safety knobs (they are not in its schema)', () => {
@@ -245,7 +256,7 @@ describe('fal buildFalImageInput (per-model request defaults)', () => {
   });
 
   it('provider_options (extra) still overrides the seeded defaults (explicit user value wins)', () => {
-    const input = buildFalImageInput({ ...base, model: 'fal-ai/flux-2-pro', extra: { output_format: 'jpeg', safety_tolerance: '2', enable_safety_checker: true } } as never);
+    const input = buildFalImageInput({ ...base, model: 'fal-ai/flux-2-pro', extra: { output_format: 'jpeg', safety_tolerance: '2', enable_safety_checker: true } } as never, { relaxSafety: true });
     assert.equal(input['output_format'], 'jpeg');
     assert.equal(input['safety_tolerance'], '2');
     assert.equal(input['enable_safety_checker'], true);
@@ -391,7 +402,7 @@ describe('transform_media ico (multi-size + merge + dedupe) over the MCP tool', 
     }
   }, { timeout: 15000 });
 
-  it('a second unpack with the same stem never overwrites — the whole set moves to <stem>-2-…', async () => {
+  it('a second unpack with the same stem never overwrites: the whole set moves to <stem>-2-…', async () => {
     const mk = async (color: string) => `data:image/x-icon;base64,${buildIco([icoImageFromPng(await squarePng(24, color))]).toString('base64')}`;
     const first = await call('transform_media', { image: await mk('#ff0000'), output_format: 'png' });
     const second = await call('transform_media', { image: await mk('#0000ff'), output_format: 'png' });

@@ -1,18 +1,18 @@
 /**
  * Per-model capability map for fal.ai image models.
  *
- * fal has no programmatic model-list API, and (crucially) each image model exposes
+ * fal has no programmatic model-list API, and each image model exposes
  * a DIFFERENT request shape. The two size mechanisms underpin everything:
  *   - `image_size`: an object `{width, height}` **or** an enum tier
  *     (`square_hd`, `square`, `portrait_4_3`, …). Used by the FLUX / Recraft /
  *     Cosmos families. Accepts **exact pixel sizes** via the object form.
  *   - `aspect_ratio`: a ratio enum (`1:1`, `4:3`, `16:9`, …). Used by Krea 2 and
- *     Ideogram. No exact pixels — the model picks dimensions.
+ *     Ideogram. No exact pixels; the model picks dimensions.
  *
  * Which field a model accepts, and which of `output_format` / `enable_safety_checker`
  * / `safety_tolerance` it carries, is per-model. This module is the single source of
  * truth so `buildFalImageInput` never guesses. (Schemas captured from
- * `https://fal.ai/models/<id>/api` — the embedded OpenAPI `components.schemas`.)
+ * `https://fal.ai/models/<id>/api`, the embedded OpenAPI `components.schemas`.)
  */
 import type { ModelInfo } from './types.js';
 
@@ -38,7 +38,7 @@ export interface FalImageModelSpec {
    * `image_urls`). Never assume one implies the other.
    */
   referenceSemantics?: 'style' | 'subject';
-  /** Model takes a structured colour palette (`colors[]` + `background_color`) — Recraft only. */
+  /** Model takes a structured colour palette (`colors[]` + `background_color`); Recraft only. */
   colorFields?: boolean;
   /** Extra options a model uniquely accepts (surfaced for docs; passed via provider_options). */
   notes?: string;
@@ -62,36 +62,36 @@ export const FAL_IMAGE_CATALOG: ModelInfo[] = [
 const IMAGE_SIZE_ENUM = ['square_hd', 'square', 'portrait_4_3', 'portrait_16_9', 'landscape_4_3', 'landscape_16_9'];
 
 const specs: { test: (model: string) => boolean; spec: FalImageModelSpec }[] = [
-  // FLUX 2 Pro *Edit* — the one fal endpoint with SUBJECT conditioning (`image_urls[]`).
+  // FLUX 2 Pro *Edit*: the one fal endpoint with SUBJECT conditioning (`image_urls[]`).
   // Must precede the generic FLUX entry, whose regex also matches this id.
   { test: (m) => /flux-2-pro\/edit|flux-2\/edit|\/edit$/i.test(m) && /flux/i.test(m), spec: {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM,
     outputFormat: true, enableSafetyChecker: true, safetyTolerance: true,
     referenceField: 'image_urls', referenceSemantics: 'subject',
   } },
-  // FLUX 2 Pro / FLUX 1.1 pro / FLUX LoRA — object image_size + full safety knobs.
+  // FLUX 2 Pro / FLUX 1.1 pro / FLUX LoRA: object image_size + full safety knobs.
   { test: (m) => /flux-2-pro|flux-pro|flux-lora|^fal-ai\/flux(?!\/)/i.test(m) && !/recraft|ideogram/i.test(m), spec: {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM,
     outputFormat: true, enableSafetyChecker: true, safetyTolerance: true,
   } },
-  // FLUX `/krea` (a FLUX variant that ALSO takes object image_size — not aspect_ratio).
+  // FLUX `/krea` (a FLUX variant that ALSO takes object image_size, not aspect_ratio).
   { test: (m) => /flux\/krea|flux\/dev|flux\/schnell/i.test(m), spec: {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM,
     outputFormat: true, enableSafetyChecker: true, safetyTolerance: true,
   } },
-  // Recraft V3 — object image_size, enable_safety_checker, no output_format/safety_tolerance.
+  // Recraft V3: object image_size, enable_safety_checker, no output_format/safety_tolerance.
   // The only fal image model with a STRUCTURED palette input (`colors[]` + `background_color`),
   // so a pinned palette reaches it as data, not just prose.
   { test: (m) => /recraft/i.test(m), spec: {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM,
     enableSafetyChecker: true, colorFields: true, notes: 'colors[], background_color, style',
   } },
-  // Cosmos 3 Super — object image_size, num_images + output_format + enable_safety_checker.
+  // Cosmos 3 Super: object image_size, num_images + output_format + enable_safety_checker.
   { test: (m) => /cosmos/i.test(m), spec: {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM,
     outputFormat: true, enableSafetyChecker: true, notes: 'num_inference_steps, guidance_scale, negative_prompt, agentic_*',
   } },
-  // Krea 2 — aspect_ratio only; image_style_references is STYLE transfer, not subject
+  // Krea 2: aspect_ratio only; image_style_references is STYLE transfer, not subject
   // conditioning (feeding it a photo makes the output look like that photograph).
   { test: (m) => /krea/i.test(m), spec: {
     sizeField: 'aspect_ratio', objectSize: false,
@@ -99,7 +99,7 @@ const specs: { test: (model: string) => boolean; spec: FalImageModelSpec }[] = [
     referenceField: 'image_style_references', referenceSemantics: 'style',
     notes: 'creativity, styles[], moodboards[]',
   } },
-  // Ideogram — aspect_ratio only; style + expand_prompt; no output_format check node.
+  // Ideogram: aspect_ratio only; style + expand_prompt; no output_format check node.
   { test: (m) => /ideogram/i.test(m), spec: {
     sizeField: 'aspect_ratio', objectSize: false,
     sizes: ['10:16', '16:10', '9:16', '16:9', '4:3', '3:4', '1:1', '1:3', '3:1', '3:2', '2:3'],

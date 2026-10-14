@@ -44,7 +44,7 @@ function norm(s: string): string {
  * This is deliberately variant-aware. A provider/namespace prefix is always a
  * *prefix* (`bytedance/seedance-2.0` → `bytedanceseedance20`) and is ignored,
  * so cross-gateway ids still match. A quality variant is always a *suffix*
- * (`-fast`/`-lite`/`-pro`/`-standard`) — anchoring to the end means a base
+ * (`-fast`/`-lite`/`-pro`/`-standard`), anchoring to the end means a base
  * alias like `seedance20` no longer matches `seedance20fast`, so each variant
  * keeps its own rank instead of all collapsing onto the highest-ranked one.
  * (List both the bare and provider-prefixed forms in `aliases`; a terser

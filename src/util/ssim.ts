@@ -1,5 +1,5 @@
 /**
- * Structural Similarity (SSIM) on a single luma channel — a pure, dependency-free
+ * Structural Similarity (SSIM) on a single luma channel: a pure, dependency-free
  * helper used by the GIF palette-size knee search (`media/gif.ts`) to score how
  * faithfully a quantized variant reproduces the source frames.
  *

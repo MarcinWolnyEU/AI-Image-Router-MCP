@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { z } from 'zod';
-import { CONFIG_PATH, resolvePath } from './paths.js';
+import { CONFIG_PATH, CONFIGURE_COMMAND, resolvePath } from './paths.js';
 
 export const GATEWAYS = ['openrouter', 'mistral', 'edenai', 'fal'] as const;
 export type GatewayId = (typeof GATEWAYS)[number];
@@ -122,12 +123,12 @@ export const configSchema = z.object({
       /**
        * Optional shared secret for the HTTP transport. When set, every /mcp request must carry
        * `Authorization: Bearer <token>` (or `X-API-Key: <token>`). Required in practice when the
-       * port is exposed publicly (e.g. a tunnel for a Le Chat connector) — tools read local paths.
+       * port is exposed publicly (e.g. a tunnel for a Le Chat connector), tools read local paths.
        */
       authToken: tokenSourceSchema.nullable().default(null),
       /**
        * Extra hostnames (no port) accepted in the `Host`/`Origin` headers while NO authToken is
-       * set. Loopback names and IP literals are always accepted; any other name is refused —
+       * set. Loopback names and IP literals are always accepted; any other name is refused,
        * that is the DNS-rebinding guard (a rebinding page always carries its own domain). Not
        * consulted when an authToken is set (the token is then the protection).
        */
@@ -136,17 +137,28 @@ export const configSchema = z.object({
       sessionIdleMinutes: z.number().int().min(1).default(30),
     })
     .default({}),
+  /** fal.ai-specific options. */
+  fal: z
+    .object({
+      /**
+       * Opt in to relaxed safety settings on fal image models: sends `enable_safety_checker:false`
+       * and `safety_tolerance:"5"` to models that carry those fields. Off by default, so fal's
+       * own safety defaults apply. You are responsible for what you generate with it on.
+       */
+      relaxSafety: z.boolean().default(false),
+    })
+    .default({}),
   image: imageObject.default({}),
   imageToVideo: i2vObject.default({}),
   textToVideo: videoObject.default({}),
   backgroundRemoval: z
     .object({
-      model: z.enum(['none', 'birefnet-general', 'birefnet-massive', 'bria-rmbg', 'isnet-general-use', 'ben2-base']).default('birefnet-general'),
+      model: z.enum(['none', 'birefnet-general', 'birefnet-massive', 'bria-rmbg', 'isnet-general-use', 'ben2-base', 'finegrain-box-segmenter']).default('birefnet-general'),
       executionProvider: z.enum(['auto', 'dml', 'cuda', 'coreml', 'cpu', 'webgpu']).default('auto'),
       modelsDir: z.string().default('models'),
     })
     .default({}),
-  /** Optional Tinify (TinyPNG) key — when set, generate_image can compress PNGs and output WebP. */
+  /** Optional Tinify (TinyPNG) key, when set, generate_image can compress PNGs and output WebP. */
   tinify: z.object({ token: tokenSourceSchema }).nullable().default(null),
   diagnostics: diagnosticsObject.default({}),
 });
@@ -161,7 +173,7 @@ export type ExecutionProviderSetting = BackgroundRemovalConfig['executionProvide
 
 export async function loadConfig(path: string = CONFIG_PATH): Promise<AppConfig> {
   if (!existsSync(path)) {
-    throw new ConfigError(`No configuration found at ${path}. Run \`npm run configure\` first.`);
+    throw new ConfigError(`No configuration found at ${path}. Run \`${CONFIGURE_COMMAND}\` first.`);
   }
   let raw: unknown;
   try {
@@ -178,12 +190,13 @@ export async function loadConfig(path: string = CONFIG_PATH): Promise<AppConfig>
 
 export async function saveConfig(cfg: AppConfig, path: string = CONFIG_PATH): Promise<void> {
   const parsed = configSchema.parse(cfg);
+  await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(parsed, null, 2) + '\n', 'utf8');
 }
 
 /**
  * Resolve the actual secret token from its configured source. Every source fails
- * on an empty/whitespace-only value — an empty secret must never reach a caller,
+ * on an empty/whitespace-only value, an empty secret must never reach a caller,
  * where it could be read as "not configured" (e.g. HTTP auth silently disabled).
  */
 export async function resolveToken(src: TokenSource): Promise<string> {

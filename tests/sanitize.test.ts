@@ -1,6 +1,6 @@
 /**
  * Unit tests for the log sanitizer (src/logging/sanitize.ts): base64 blobs and
- * data: URLs — in tool inputs OR outputs — must collapse to `first5(...) [N chars]`
+ * data: URLs (in tool inputs OR outputs) must collapse to `first5(...) [N chars]`
  * so log files never balloon with image/video payloads, while ordinary text and
  * structure pass through untouched.
  *

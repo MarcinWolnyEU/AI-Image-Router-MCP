@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "ai-image-router": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "ai-image-router-mcp"],
+      "env": {
+        "AIR_MCP_CONFIG": "${AIR_MCP_CONFIG}",
+        "AIR_MCP_HOME": "${AIR_MCP_HOME}"
+      }
+    }
+  }
+}

@@ -36,7 +36,7 @@ describe('inputStem', () => {
     assert.equal(inputStem('/tmp/app.icon.png'), 'app.icon');
     assert.equal(inputStem('https://example.com/a/b/logo.png?size=2'), 'logo');
   });
-  it('is empty for inline data (data: URLs, raw base64) — callers choose their fallback', () => {
+  it('is empty for inline data (data: URLs, raw base64), so callers choose their fallback', () => {
     assert.equal(inputStem('data:image/png;base64,iVBORw0KGgo='), '');
     assert.equal(inputStem('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'), '');
   });

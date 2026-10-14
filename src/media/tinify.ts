@@ -42,7 +42,7 @@ async function shrink(key: string, bytes: Buffer, signal?: AbortSignal): Promise
   return location;
 }
 
-/** Compress a PNG (or any supported image) — returns the optimised bytes (same format). */
+/** Compress a PNG (or any supported image); returns the optimised bytes (same format). */
 export async function tinifyCompress(key: string, bytes: Buffer, signal?: AbortSignal): Promise<Buffer> {
   const url = await shrink(key, bytes, signal);
   const res = await rawRequest(url, { method: 'GET', headers: { Authorization: authHeader(key) }, signal, timeoutMs: 120_000 });
@@ -50,7 +50,7 @@ export async function tinifyCompress(key: string, bytes: Buffer, signal?: AbortS
   return Buffer.from(await res.arrayBuffer());
 }
 
-/** Compress + convert an image to another format (default image/webp) — returns the converted bytes. */
+/** Compress + convert an image to another format (default image/webp); returns the converted bytes. */
 export async function tinifyConvert(key: string, bytes: Buffer, type = 'image/webp', signal?: AbortSignal): Promise<Buffer> {
   const url = await shrink(key, bytes, signal);
   const res = await rawRequest(url, {

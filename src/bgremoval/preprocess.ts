@@ -10,7 +10,7 @@ export interface OrientedRgb {
 /**
  * Decode an input image ONCE, as it is DISPLAYED: EXIF orientation applied (`.rotate()`),
  * alpha dropped, exactly 3 channels. Both the model input and the final RGBA composite are
- * built from these pixels — reading metadata/raw pixels without the rotation (the output PNG
+ * built from these pixels; reading metadata/raw pixels without the rotation (the output PNG
  * carries no EXIF) turned a portrait phone photo into a sideways landscape cutout.
  */
 export async function decodeOrientedRgb(input: Buffer): Promise<OrientedRgb> {

@@ -85,7 +85,7 @@ describe('fal video tuning-param fallback', () => {
     assert.ok(out.warnings?.some((w) => /generated WITHOUT: .*resolution.*duration/.test(w)), JSON.stringify(out.warnings));
   });
 
-  it('a 5xx on the SUBMIT is ambiguous (the job may be queued) — it is NOT resubmitted', async () => {
+  it('a 5xx on the SUBMIT is ambiguous (the job may be queued), so it is NOT resubmitted', async () => {
     stub({ submit: json(502, { detail: 'bad gateway' }), status: json(200, { status: 'COMPLETED' }), result: json(200, { video: { url: VIDEO_URL } }) });
     const gw = new FalGateway('id:secret', logger);
     await assert.rejects(gw.generateVideo(params()), (e: Error) => /502/.test(e.message) && /not re-?sent/i.test(e.message) && /not re-?sent/i.test(describeError(e)));
@@ -152,5 +152,34 @@ describe('fal job that never finishes / unknown model / unsupported inputs', () 
     await assert.rejects(gw.generateVideo(i2v), /Nothing was submitted/);
     assert.equal(submits.length, 0);
     assert.equal(await gw.checkVideoRequest({ ...i2v, references: [{ ...png, role: 'first_frame' }] }), null);
+  });
+});
+
+describe('fal safety settings are opt-in', () => {
+  const IMG_MODEL = 'fal-ai/flux-2-pro';
+  const IMG_URL = 'https://v3.fal.media/files/out.png';
+  const imageParams = () =>
+    ({ model: IMG_MODEL, prompt: 'a fox', aspectRatio: '1:1', resolution: null, n: null, temperature: null, topP: null, edenProvider: null }) as never;
+
+  async function submittedBody(opts?: { relaxSafety?: boolean }): Promise<Record<string, unknown>> {
+    stub({ submit: accepted, status: json(200, { status: 'COMPLETED' }), result: json(200, { images: [{ url: IMG_URL, content_type: 'image/png' }] }) });
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
+      String(input) === IMG_URL ? new Response(Buffer.from('png-bytes'), { status: 200 }) : real(input, init)) as typeof fetch;
+    await new FalGateway('id:secret', logger, { pollIntervalMs: 5, ...opts }).generateImage(imageParams());
+    assert.equal(submits.length, 1);
+    return submits[0] as Record<string, unknown>;
+  }
+
+  it('sends no safety fields by default', async () => {
+    const body = await submittedBody();
+    assert.equal(body['enable_safety_checker'], undefined);
+    assert.equal(body['safety_tolerance'], undefined);
+  });
+
+  it('sends the relaxed fields only with relaxSafety: true', async () => {
+    const body = await submittedBody({ relaxSafety: true });
+    assert.equal(body['enable_safety_checker'], false);
+    assert.equal(body['safety_tolerance'], '5');
   });
 });

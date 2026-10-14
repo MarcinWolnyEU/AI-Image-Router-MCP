@@ -7,7 +7,7 @@ import type { IncomingHttpHeaders } from 'node:http';
  * or `X-API-Key: <token>` (Le Chat "API token" with a custom header). Constant-time compare
  * over SHA-256 digests so token length isn't leaked either. `expected` null → auth disabled.
  * An EMPTY `expected` is a misconfiguration (a token was configured but resolved to
- * nothing) and fails CLOSED — it must never be read as "auth off".
+ * nothing) and fails CLOSED: it must never be read as "auth off".
  */
 export function isHttpRequestAuthorized(headers: IncomingHttpHeaders, expected: string | null): boolean {
   if (expected === null) return true;

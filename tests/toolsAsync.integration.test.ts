@@ -2,11 +2,11 @@
  * Tool-level integration tests for the async generation feature. Drives the REAL
  * `generate_image` / `image_to_video` handlers over an in-memory MCP transport
  * (no process spawn, no network/cost), with a fake gateway that can either return
- * instantly or sit on a deferred the test releases — so we can observe the
+ * instantly or sit on a deferred the test releases, so we can observe the
  * submit → poll → render rhythm deterministically.
  *
  * Because async is now the DEFAULT (config.async=true), any test that wants a
- * BLOCKING result must pass `wait:true` (or set config.async=false) — this is
+ * BLOCKING result must pass `wait:true` (or set config.async=false); this is
  * asserted explicitly below.
  */
 import { describe, it, before, after } from 'node:test';
@@ -73,7 +73,7 @@ function hasType(r: CallResult, type: string): boolean {
   return (r.content ?? []).some((c) => c.type === type);
 }
 const call = (name: string, args: Record<string, unknown>): Promise<CallResult> => h.call(name, args);
-/** Poll a background job until it is no longer queued/in-progress (no fixed sleeps — robust under load). */
+/** Poll a background job until it is no longer queued/in-progress (no fixed sleeps, reliable under load). */
 async function pollDone(tool: string, jobId: string): Promise<CallResult> {
   for (let i = 0; i < 200; i++) {
     const r = await call(tool, { job_id: jobId });
@@ -246,7 +246,7 @@ describe('generate_video async (the poll the submit reply tells you to send)', (
     assert.ok(jobId, `expected a video job id in: ${text}`);
     assert.match(text, /Poll with `generate_video job_id:/);
 
-    // Exactly what the reply says to send — no prompt. The schema used to reject this (-32602).
+    // Exactly what the reply says to send: no prompt. The schema used to reject this (-32602).
     const polled = await pollDone('generate_video', jobId!);
     assert.equal(polled.isError, undefined, textOf(polled));
     assert.match(textOf(polled), /Generated 1 video\(s\) using fake\/vid\./);
@@ -278,7 +278,7 @@ describe('generate_video async (the poll the submit reply tells you to send)', (
     }
   });
 
-  it('configured defaults are applied to the configured model only — never to a `model` override', async () => {
+  it('configured defaults are applied to the configured model only, never to a `model` override', async () => {
     resetFake();
     const t2v = runtime.config.textToVideo as { model: string | null; defaultDuration: number | null; defaultFps: number | null };
     const saved = { model: t2v.model, d: t2v.defaultDuration, f: t2v.defaultFps };

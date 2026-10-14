@@ -1,7 +1,7 @@
 /**
  * The ONE `auto` execution-provider resolution shared by the runtime (`birefnet.ts`), the
- * wizard and `health_status` (`src/bgremoval/models.ts`). They used to disagree on Windows —
- * the wizard said WebGPU, the runtime opened DirectML — so the WebGPU cascade never fired
+ * wizard and `health_status` (`src/bgremoval/models.ts`). They used to disagree on Windows:
+ * the wizard said WebGPU, the runtime opened DirectML, so the WebGPU cascade never fired
  * under `auto` and BiRefNet/bria crashed on DML. Pure, no ONNX session.
  */
 import { describe, it } from 'node:test';
@@ -27,7 +27,7 @@ describe('resolveExecutionProvider (auto)', () => {
 });
 
 describe('plannedProviders (what init tries, in order)', () => {
-  it('auto + birefnet-general on Windows tries WebGPU first — so the cascaded variant is used — then CPU', () => {
+  it('auto + birefnet-general on Windows tries WebGPU first (so the cascaded variant is used), then CPU', () => {
     const plan = plannedProviders(BG_MODELS['birefnet-general'], 'auto', 'win32', 'x64');
     assert.deepEqual(plan.eps, ['webgpu', 'cpu']);
     assert.equal(plan.skipped, undefined);

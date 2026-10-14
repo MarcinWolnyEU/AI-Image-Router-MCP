@@ -30,7 +30,7 @@ function videoHeaderLines(result: VideoGenResult, save: boolean): string[] {
   return lines;
 }
 
-/** One video: saved file (+ output_mode content), or — not saved / no bytes — its remote link. */
+/** One video: saved file (+ output_mode content), or (not saved / no bytes) its remote link. */
 async function videoContent(v: GeneratedVideo, idx: number, label: string, save: boolean, outputMode: OutputMode): Promise<{ lines: string[]; media: ToolContent[] }> {
   const ext = extFromMime(v.mimeType, 'mp4');
   if (v.bytes && save) {
@@ -47,16 +47,16 @@ async function videoContent(v: GeneratedVideo, idx: number, label: string, save:
     return { lines: [`#${idx}: ${saved.path}` + (v.sourceUrl ? `  (source: ${v.sourceUrl})` : '')], media };
   }
   if (!v.sourceUrl) return { lines: [], media: [] };
-  // Remote URL only (no bytes, or save:false) — base64 isn't possible, fall back to a link.
+  // Remote URL only (no bytes, or save:false); base64 isn't possible, fall back to a link.
   return {
     lines: [`#${idx}: ${v.sourceUrl}`],
     media: [{ type: 'resource_link', uri: v.sourceUrl, name: `video-${idx}.${ext}`, mimeType: v.mimeType, description: `Generated video #${idx} (remote URL)` }],
   };
 }
 
-/** save:false keeps nothing locally; the provider link is all that is returned — and it is not public. */
+/** save:false keeps nothing locally; the provider link is all that is returned, and it is not public. */
 const UNSAVED_VIDEO_NOTE =
-  'Not saved (save:false) — no local copy was kept. A provider URL listed below may require your provider API key ' +
+  'Not saved (save:false): no local copy was kept. A provider URL listed below may require your provider API key ' +
   '(e.g. an `Authorization` header) to download and may expire; use save:true to keep the video.';
 
 /** Shared `aspect_ratio` description for the video tools. */
@@ -67,10 +67,10 @@ export const VIDEO_ASPECT_RATIO_DESCRIPTION =
 /** How a `model` override interacts with the configured defaults (both video tools). */
 export const MODEL_OVERRIDE_DEFAULTS_NOTE =
   'The configured default resolution/fps/duration were chosen for the configured model, so with a different model ' +
-  'they are NOT applied — pass them explicitly if that model needs them.';
+  'they are NOT applied. Pass them explicitly if that model needs them.';
 
 /**
- * The configured default resolution/fps/duration — only when the call targets the configured
+ * The configured default resolution/fps/duration, only when the call targets the configured
  * model. Those defaults were picked (by the wizard) for THAT model; sent to an override they
  * cause provider rejections (fal Hailuo 422 on Cosmos' 2 s duration) and resubmits.
  */
@@ -142,13 +142,13 @@ export interface VideoRun {
 }
 
 /**
- * Run a planned video generation: submit a background job and return its `job_id` (async —
+ * Run a planned video generation: submit a background job and return its `job_id` (async:
  * a slow generation never holds an MCP call open past a client timeout), or block for the
  * result and render it. The configured mode is overridable per call via `wait`.
  */
 export async function runVideoGeneration(run: VideoRun): Promise<ToolResult> {
   const { tool, gateway, params, model, output } = run;
-  // Pre-billing: a request the gateway knows it cannot honour is refused here, for free —
+  // Pre-billing: a request the gateway knows it cannot honour is refused here, for free,
   // before a sync call, and before a background job is even created.
   const refusal = await gateway.checkVideoRequest?.(params).catch(() => null);
   if (refusal) return errorResult(refusal);

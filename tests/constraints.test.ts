@@ -1,5 +1,5 @@
 /**
- * Constraint fixtures — the remaining needs from the X55 icon session backlog:
+ * Constraint fixtures: the remaining needs from the X55 icon session backlog:
  *
  *  S4  a pinned accent palette must be a first-class, server-understood part of
  *      the request (not prose), must survive provider mapping, and the tool must
@@ -46,7 +46,7 @@ async function twoTone(a = YELLOW, b = RED, bg = '#ffffff'): Promise<Buffer> {
 
 const twoToneDataUrl = async (): Promise<string> => `data:image/png;base64,${(await twoTone()).toString('base64')}`;
 
-describe('S4/S5 — constraint compilation (deterministic, no model involved)', () => {
+describe('S4/S5: constraint compilation (deterministic, no model involved)', () => {
   it('compiles a palette into exact hexes plus the hue families that must NOT appear', () => {
     const c = compileConstraints({ palette: [YELLOW, RED] });
     assert.match(c.text, /COLOUR PALETTE \(exact\): #f0ea17 \(yellow\), #e60909 \(red\)/);
@@ -58,7 +58,7 @@ describe('S4/S5 — constraint compilation (deterministic, no model involved)', 
     assert.equal(hueFamily(parseHexColor(RED)), 'red');
   });
 
-  it('expands known exclusions to the phrasing that actually suppresses them', () => {
+  it('expands known exclusions to the phrasing that suppresses them', () => {
     assert.equal(expandExclusion('text'), 'text, letters, words, numbers, labels, captions, typography, logotype');
     assert.equal(expandExclusion('NO cable'), 'cable, wire, cord, lead');
     assert.equal(expandExclusion('a watermark'), 'watermark, signature, stamp, attribution mark');
@@ -90,7 +90,7 @@ describe('S4/S5 — constraint compilation (deterministic, no model involved)', 
   });
 });
 
-describe('S4/S5 — verifying a result against the constraints', () => {
+describe('S4/S5: verifying a result against the constraints', () => {
   it('measures on-palette coverage and names the dominant off-palette accent', async () => {
     const onPalette = await analyzePalette(await twoTone(), [YELLOW, RED]);
     assert.ok(onPalette.onPaletteFraction > 0.95, `expected on-palette, got ${onPalette.onPaletteFraction}`);
@@ -125,7 +125,7 @@ describe('S4/S5 — verifying a result against the constraints', () => {
   });
 });
 
-describe('S4/S5 — constraints survive fal provider mapping', () => {
+describe('S4/S5: constraints survive fal provider mapping', () => {
   const base = { prompt: 'an icon', aspectRatio: '1:1', resolution: null, n: null, temperature: null, topP: null, edenProvider: null };
 
   it('Recraft receives the palette as structured colors[] + background_color, not just prose', () => {
@@ -152,7 +152,7 @@ describe('S4/S5 — constraints survive fal provider mapping', () => {
 });
 
 // ---------------------------------------------------------------------------
-// S6 — reference semantics, and S4/S5 end-to-end through generate_image
+// S6: reference semantics, and S4/S5 end-to-end through generate_image
 // ---------------------------------------------------------------------------
 
 interface Recorder {
@@ -207,7 +207,7 @@ describe('generate_image with a STYLE-only model (Krea-like)', () => {
       background: '#ffffff',
     });
     assert.equal(r.isError, undefined, textOf(r));
-    // Carried into the request the provider receives — both in the prompt and structured.
+    // Carried into the request the provider receives, both in the prompt and structured.
     assert.match(rec.last!.prompt, /an X55 joystick icon/);
     assert.match(rec.last!.prompt, /COLOUR PALETTE \(exact\): #f0ea17 \(yellow\), #e60909 \(red\)/);
     assert.match(rec.last!.prompt, /MUST NOT CONTAIN: text, letters/);
@@ -330,7 +330,7 @@ describe('generate_image with a model that has NO conditioning input (fal FLUX s
   });
   after(() => h.close());
 
-  it('reference_images are refused up front — no job id, no gateway call (it used to fail only on the first poll)', async () => {
+  it('reference_images are refused up front: no job id, no gateway call (it used to fail only on the first poll)', async () => {
     const r = await h.call('generate_image', { prompt: 'x', reference_images: [await twoToneDataUrl()] });
     assert.equal(r.isError, true);
     assert.match(textOf(r), /has no image-conditioning input/);

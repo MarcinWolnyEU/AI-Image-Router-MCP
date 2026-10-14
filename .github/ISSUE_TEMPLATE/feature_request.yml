@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an improvement or a new capability.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that this server makes hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work? Include example tool arguments or config fields if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Does it need a gateway capability that is not wired up yet?
+      description: The server can only use what the gateway API offers.
+      options:
+        - "No, it is local or purely server-side"
+        - "Yes, the gateway API already supports it"
+        - "Not sure"
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched the existing issues.
+          required: true

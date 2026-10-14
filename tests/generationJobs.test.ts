@@ -51,7 +51,7 @@ describe('GenerationJobStore payload bounds (TTL + memory budget)', () => {
     return { ...heavy(id, mb, finishedAt), renderError: 'disk hiccup', rescuedFiles: [`/out/${id}-unsaved-1.png`] };
   }
 
-  it('NEVER releases an unsaved raw result (render failed, nothing on disk) — past the TTL or the budget', () => {
+  it('NEVER releases an unsaved raw result (render failed, nothing on disk), past the TTL or the budget', () => {
     let now = 0;
     const store = new GenerationJobStore({ finishedTtlMs: 10, maxRetainedBytes: 1, now: () => now });
     const j = { ...heavy('paid', 2, 0), renderError: 'fitSquare: cannot upscale' };

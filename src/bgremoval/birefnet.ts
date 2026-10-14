@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
+import { CONFIGURE_COMMAND } from '../config/paths.js';
 import type { Logger } from '../logging/logger.js';
 import { BG_MODELS, type BgModelSpec, type BgModelKey, type DownloadProgress, ensureModelFile, plannedProviders, requiredFreeMB } from './models.js';
 import { hflipPlane, hysteresisCleanup, maskToAlphaBytes, normalizeMask } from './postprocess.js';
@@ -24,7 +25,7 @@ function half2float(h: number): number {
 /**
  * Read an ONNX output tensor's data as a Float32Array, decoding fp16 if necessary.
  * Some BEN2 exports (e.g. PramaLLC's `BEN2_Base.onnx`) declare a **float16 output**, which
- * onnxruntime-node returns as a `Uint16Array` of raw fp16 bits — casting that straight to
+ * onnxruntime-node returns as a `Uint16Array` of raw fp16 bits; casting that straight to
  * `Float32Array` reads the bit patterns as integers (a 0..1 mask becomes 0..15360), and the
  * downstream min-max stretch amplifies the mangled low end into visible window-grid "seams".
  * So decode by the tensor's declared type, not by a blind cast.
@@ -38,7 +39,7 @@ function tensorToFloat32(tensor: { type: string; data: unknown }): Float32Array 
     return out;
   }
   // Any other numeric typed array (incl. a real Float16Array on Node ≥22, whose values are
-  // already decoded) — copy through; `from` reads the element values, not the raw bytes.
+  // already decoded): copy through; `from` reads the element values, not the raw bytes.
   return Float32Array.from(data as ArrayLike<number>);
 }
 
@@ -66,7 +67,7 @@ export class BiRefNetRemover {
   }
 
   /**
-   * Release the native session (weights, arena, GPU buffers — 1–4 GB). Dropping the JS
+   * Release the native session (weights, arena, GPU buffers: 1–4 GB). Dropping the JS
    * reference alone leaves it alive until V8 happens to collect the small wrapper.
    */
   async dispose(): Promise<void> {
@@ -85,8 +86,8 @@ export class BiRefNetRemover {
     throw new Error(
       `Background removal model "${this.modelKey}" needs about ${gb(need)} GB of free RAM to run on the ` +
         `${ep.toUpperCase()} execution provider, but only ${gb(free)} GB is currently free. ` +
-        `Free up memory (close other apps), or in configuration (\`npm run configure\`) pick a lighter ` +
-        `background-removal model — or set it to "none" — then restart the MCP server.`,
+        `Free up memory (close other apps), or in configuration (\`${CONFIGURE_COMMAND}\`) pick a lighter ` +
+        `background-removal model (or set it to "none"), then restart the MCP server.`,
     );
   }
 
@@ -94,14 +95,14 @@ export class BiRefNetRemover {
     const spec = this.spec;
     let modelPath = await ensureModelFile(spec, this.modelsDir, onProgress);
 
-    // Shared resolution of `auto` (models.ts) — the same answer the wizard and health_status give.
+    // Shared resolution of `auto` (models.ts), the same answer the wizard and health_status give.
     const plan = plannedProviders(spec, this.epSetting);
     if (plan.skipped) {
       this.logger.warn(`"${this.modelKey}" cannot run on the ${plan.skipped.ep} execution provider; using CPU instead`, { note: plan.skipped.note });
     }
     const eps = plan.eps;
     // WebGPU can't run the BiRefNet family as-is (wide Split/Concat exceed the per-shader buffer
-    // limit). Transparently swap in a cascaded variant — generating it once if needed — so GPU
+    // limit). Transparently swap in a cascaded variant (generating it once if needed) so GPU
     // background removal works end-to-end.
     if (eps[0] === 'webgpu' && spec.cascadeForWebgpu) {
       modelPath = await this.ensureCascadedModel(modelPath, onProgress);
@@ -109,7 +110,7 @@ export class BiRefNetRemover {
     // Pre-flight RAM check against the provider we're about to try (the CPU fallback below
     // needs much more host RAM than an accelerator, so re-checked there if it triggers).
     this.assertEnoughRam(eps[0]!);
-    // logSeverityLevel: 3 (Error) silences onnxruntime's native stderr noise on load —
+    // logSeverityLevel: 3 (Error) silences onnxruntime's native stderr noise on load:
     // "Removing initializer …" (CleanUnusedInitializers), "Some nodes were not assigned to
     // the preferred EP", lenient shape-merge notices. These bypass our Logger and are benign;
     // real load/run failures are level Error and still surface (and we catch+log them ourselves).
@@ -134,7 +135,7 @@ export class BiRefNetRemover {
   private async ensureCascadedModel(modelPath: string, onProgress?: DownloadProgress): Promise<string> {
     const cascadedPath = modelPath.replace(/\.onnx$/i, '-webgpu.onnx');
     if (!existsSync(cascadedPath)) {
-      this.logger.info('Preparing WebGPU-compatible (cascaded) model — one-time', { model: this.modelKey });
+      this.logger.info('Preparing WebGPU-compatible (cascaded) model, one-time', { model: this.modelKey });
       onProgress?.({ phase: 'verify', message: 'Preparing WebGPU-compatible model (one-time)…' });
       const { cascadeWideOps } = await import('./cascade.js');
       const r = await cascadeWideOps(modelPath, cascadedPath);
@@ -172,9 +173,9 @@ export class BiRefNetRemover {
       chw[2 * plane + p] = (rgb[p * 3 + 2]! * inv - mean[2]) / std[2];
     }
     const session = this.session;
-    if (!session) throw new Error('The background-removal session was released (the server was restarted) — please retry.');
+    if (!session) throw new Error('The background-removal session was released (the server was restarted). Please retry.');
     const outputs = await session.run({ [this.inputName]: new ort.Tensor('float32', chw, [1, 3, SIZE, SIZE]) });
-    // Decode by declared dtype — a float16 output comes back as a Uint16Array of fp16 bits.
+    // Decode by declared dtype: a float16 output comes back as a Uint16Array of fp16 bits.
     const raw = tensorToFloat32(outputs[this.outputName]!);
     return flop ? hflipPlane(raw, SIZE, SIZE) : raw;
   }
@@ -233,7 +234,7 @@ function envNumber(name: string, fallback: number): number {
 
 /**
  * Resize the SIZE² alpha back to the original dimensions. NOTE: sharp processes in sRGB,
- * so a 1-channel raw input comes back as 3 channels — read with the real stride.
+ * so a 1-channel raw input comes back as 3 channels, so read with the real stride.
  */
 async function resizeMask(alpha: Buffer, width: number, height: number): Promise<{ data: Buffer; stride: number }> {
   const { data, info } = await sharp(alpha, { raw: { width: SIZE, height: SIZE, channels: 1 } })

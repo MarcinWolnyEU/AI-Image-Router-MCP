@@ -100,7 +100,7 @@ beforeEach(() => {
 });
 
 describe('DNS-rebinding / cross-site guard (no auth token)', () => {
-  it('refuses a foreign Host — a rebinding page reaching 127.0.0.1 through its own domain', async () => {
+  it('refuses a foreign Host (a rebinding page reaching 127.0.0.1 through its own domain)', async () => {
     const before = app.sessions.size;
     const r = await send({ headers: { host: `evil.example:${port}` }, chunks: json(INIT) });
     assert.equal(r.status, 403);
@@ -172,7 +172,7 @@ describe('session expiry', () => {
     assert.ok(app.sessions.has(sid));
     clock = 500;
     await send({ headers: { 'mcp-session-id': sid }, chunks: json({ jsonrpc: '2.0', id: 4, method: 'tools/list' }) });
-    clock = 1200; // 700 ms since this session's last request — still within the 1000 ms limit
+    clock = 1200; // 700 ms since this session's last request, still within the 1000 ms limit
     await app.sweep(); // (sessions left idle by earlier tests are closed here)
     assert.ok(app.sessions.has(sid), 'a recently used session survives the sweep');
     clock = 2600;

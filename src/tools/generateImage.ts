@@ -26,7 +26,7 @@ export function registerGenerateImage(server: McpServer): void {
     },
     async (args, extra): Promise<ToolResult> => {
       const a = args as Record<string, unknown>;
-      // Phase timing — localize where a slow/timed-out call spends its time
+      // Phase timing: localize where a slow/timed-out call spends its time
       // (reference resolution vs. the gateway HTTP call vs. tinify post-proc).
       const t0 = Date.now();
       const phases: Phases = {};

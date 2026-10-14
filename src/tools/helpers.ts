@@ -4,7 +4,7 @@ import { icoLargestToPng, ICO_MIME } from '../media/ico.js';
 
 export type ToolContent =
   // `_meta` is a standard, passthrough field on every MCP content block (see SDK
-  // ContentBlock schema) — we use it to tag non-display info like possible-cause hints.
+  // ContentBlock schema); we use it to tag non-display info like possible-cause hints.
   | { type: 'text'; text: string; _meta?: Record<string, unknown> }
   | { type: 'image'; data: string; mimeType: string }
   | { type: 'resource_link'; uri: string; name: string; mimeType?: string; description?: string; icons?: Array<{ src: string; mimeType?: string; sizes?: string[] }> }
@@ -22,7 +22,7 @@ export interface ToolResult {
  * `resource_link` to the saved file (+ optional downscaled inline preview);
  * `base64` returns the FULL bytes inline (image → `image` block; video/other →
  * embedded `resource` blob). MCP can't stream binary, so base64 is one big JSON
- * object — large for video. Either way the file is always saved to disk first.
+ * object, large for video. Either way the file is always saved to disk first.
  */
 export type OutputMode = 'filePath' | 'base64';
 
@@ -73,7 +73,7 @@ export interface SaveAndRenderOpts extends Omit<OutputModeOpts, 'saved'> {
 
 /**
  * The tail shared by single-file media tools: persist the bytes and render them per
- * the output mode, or — with `save:false` — return only an inline preview (when enabled).
+ * the output mode, or (with `save:false`) return only an inline preview (when enabled).
  * `saved` is null when nothing was written.
  */
 export async function saveAndRender(o: SaveAndRenderOpts): Promise<{ saved: SavedFile | null; media: ToolContent[] }> {
@@ -129,7 +129,7 @@ export async function renderIcoMediaContent(o: IcoMediaOpts): Promise<ToolConten
 
 /**
  * Inline PNG preview of an ICO's largest entry (sharp can't decode the container). Best-effort:
- * `[]` when it can't be rendered — a saved file's resource_link stays authoritative.
+ * `[]` when it can't be rendered; a saved file's resource_link stays authoritative.
  */
 export async function icoPreviewContent(bytes: Buffer, previewMaxBytes: number): Promise<ToolContent[]> {
   try {
@@ -144,7 +144,7 @@ export async function icoPreviewContent(bytes: Buffer, previewMaxBytes: number):
 
 /** Shown when a call keeps no file AND returns no preview (save:false with inline_preview off). */
 export const NOTHING_RETURNED_NOTE =
-  'Note: nothing was saved and no preview was returned (save:false with inline_preview off) — pass save:true or inline_preview:true to get the result.';
+  'Note: nothing was saved and no preview was returned (save:false with inline_preview off). Pass save:true or inline_preview:true to get the result.';
 
 /** Shared zod-less description for the `output_mode` param. */
 export const OUTPUT_MODE_DESCRIPTION =
@@ -179,7 +179,7 @@ export const POSSIBLE_CAUSE_META_KEY = 'ai-image-router/category';
 
 /**
  * Build an error result. Optional `possibleCauses` (human-readable guesses at WHY a
- * call failed — account/config issues the API reports opaquely) are each surfaced as a
+ * call failed: account/config issues the API reports opaquely) are each surfaced as a
  * standard `text` content block tagged via `_meta[POSSIBLE_CAUSE_META_KEY]`, so any
  * client displays them AND code can detect them by that key. No non-standard content
  * `type`, and no `structuredContent` (which would need an `outputSchema` to be idiomatic).

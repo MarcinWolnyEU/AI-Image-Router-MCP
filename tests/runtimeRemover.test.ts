@@ -3,14 +3,14 @@
  * injected through `runtime.removerFactory` (no ONNX session, no model download):
  *
  *  - an init still loading when a restart lands must never install its STALE session
- *    (old model/EP) over the new config — the stale one is disposed and waiters get the
+ *    (old model/EP) over the new config: the stale one is disposed and waiters get the
  *    new config's remover;
  *  - a failing stale init must not cancel a newer in-flight init (which would let a
  *    third init start → two multi-GB sessions loading at once);
  *  - a restart RELEASES the previous session (native memory isn't freed by dropping
  *    the JS reference).
  *
- * `AIR_MCP_CONFIG` must be set before the src modules load — hence dynamic imports.
+ * `AIR_MCP_CONFIG` must be set before the src modules load, hence dynamic imports.
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,5 +1,5 @@
 /**
- * Icon-workflow fixtures — the three needs from the X55 icon session backlog:
+ * Icon-workflow fixtures: the three needs from the X55 icon session backlog:
  *
  *  S1  square-fitting must not silently crop an off-centre subject
  *      (`fitSquare` pad/crop + the `generate_image` ico path).
@@ -51,10 +51,10 @@ function countNear(data: Buffer, hex: string, tol = 60): number {
 }
 
 // ---------------------------------------------------------------------------
-// S1 — the primitive
+// S1: the primitive
 // ---------------------------------------------------------------------------
 
-describe('S1 — square-fitting a non-square source must not silently crop', () => {
+describe('S1: square-fitting a non-square source must not silently crop', () => {
   it('pad (the default) keeps an off-centre subject that a center-crop would delete', async () => {
     const wide = await wideWithLeftDisc();
 
@@ -216,7 +216,7 @@ describe('icon workflow over the MCP tools', () => {
 
   it('S2: a failure on a SMALL size (after larger ones were derived) still writes nothing', async () => {
     // Largest-first: 256/128 derive fine from the master, then 32 fails from a tiny
-    // variant. Every file must be withheld — "Nothing was written" has to be true.
+    // variant. Every file must be withheld: "Nothing was written" has to be true.
     const master = join(outDir, 'partial-master.png');
     const tiny = join(outDir, 'partial-tiny.png');
     await writeFile(master, await squarePng(512));
@@ -247,7 +247,7 @@ describe('icon workflow over the MCP tools', () => {
     const a = join(outDir, 's3-a.png');
     const b = join(outDir, 's3-b.png');
     await writeFile(a, await squarePng(16));
-    await writeFile(b, await squarePng(32)); // declared below as 24 — a real mismatch
+    await writeFile(b, await squarePng(32)); // declared below as 24: a real mismatch
 
     const r = await call('transform_media', { image: [a, b], output_format: 'ico', sizes: [16, 24] });
     assert.equal(r.isError, true);

@@ -1,8 +1,8 @@
 /**
  * The GPU probe behind `health_status` (`src/util/sysinfo.ts`). It used to run
- * `execFileSync('nvidia-smi')` twice per health call — blocking the whole server (every
+ * `execFileSync('nvidia-smi')` twice per health call, blocking the whole server (every
  * session, every in-flight job) for up to 8 s. Now: async, one query shared by concurrent
- * callers, cached for a short TTL. Uses an injected query — no nvidia-smi needed.
+ * callers, cached for a short TTL. Uses an injected query, no nvidia-smi needed.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,12 +1,12 @@
 /**
- * LIVE, BILLED contract test for the fal.ai ICO path — the genuinely risky bit.
+ * LIVE, BILLED contract test for the fal.ai ICO path, the risky bit.
  *
- * Why this is billed and worth it: `generate_image` ico has no way to know the
- * model's output pixel size ahead of time (fal models take an `image_size`/`aspect_ratio`
- * ENUM of aspect tiers, never pixel dimensions — verified by probing; see tests/paid).
- * So the ico path must (a) request the model at its default/`1:1`, (b) read the actual
- * returned dimensions, (c) downscale to the requested `ico_size` (never upscale) and
- * keep the untouched original. This test exercises that against a real model.
+ * Why this is billed and worth it: `generate_image` ico can't trust the request to fix
+ * the output pixel size (fal models may ignore or tweak it, and Krea/Ideogram take only an
+ * `aspect_ratio` enum). So the ico path must (a) request a square render (an exact object
+ * `image_size`, which FLUX 2 Pro takes), (b) read the actual returned dimensions,
+ * (c) downscale to the requested `width` (never upscale) and keep the untouched original.
+ * This test exercises that against a real model.
  *
  * Run: `npm run integration:paid`. Requires a live fal token (`fal ai token.txt` or
  * `FAL_TOKEN`). Saves artifacts to `output/` for inspection. Excluded from `npm test`.
@@ -37,11 +37,12 @@ const gw = createGateway('fal', token, logger);
 
 describe('fal.ai live ICO path (billed)', () => {
   it('requests exact object image_size, generates, and keeps the untouched original', async () => {
-    // The request body this gateway produced must carry the seeded defaults + object size.
+    // The request body this gateway produced must carry the seeded output format + object size,
+    // and no safety overrides (relaxSafety is off by default).
     const input = buildFalImageInput({ model: MODEL, prompt: 'x', width: ICO_TARGET, height: ICO_TARGET } as never);
     assert.equal(input['output_format'], 'png');
-    assert.equal(input['safety_tolerance'], '5');
-    assert.equal(input['enable_safety_checker'], false);
+    assert.equal(input['safety_tolerance'], undefined);
+    assert.equal(input['enable_safety_checker'], undefined);
     assert.deepEqual(input['image_size'], { width: ICO_TARGET, height: ICO_TARGET });
 
     await mkdir(OUT_DIR, { recursive: true });
@@ -59,15 +60,15 @@ describe('fal.ai live ICO path (billed)', () => {
     // The ico path works on the raw model output: fit to square + target size (downscale only).
     const fitted = await fitSquare(source.bytes, source.mimeType, ICO_TARGET);
     const meta = await sharp(fitted.bytes).metadata();
-    assert.equal(meta.width, ICO_TARGET, 'fitted output must be exactly ico_size');
+    assert.equal(meta.width, ICO_TARGET, 'fitted output must be exactly the requested width');
     assert.equal(meta.height, ICO_TARGET);
-    // A non-square model result would be PADDED (never cropped) — report which happened.
+    // A non-square model result would be PADDED (never cropped); report which happened.
     if (fitted.note) console.log(`  squaring: ${fitted.note}`);
 
     const ico = buildIco([icoImageFromPng(fitted.bytes)]);
     const layers = await parseIco(ico);
     assert.equal(layers.length, 1);
-    assert.equal(layers[0]!.width, ICO_TARGET, 'ICO must contain exactly one entry at ico_size');
+    assert.equal(layers[0]!.width, ICO_TARGET, 'ICO must contain exactly one entry at the requested width');
 
     // Persist artifacts for inspection (per the project's test-run convention).
     const stem = `paid-fal-ico-${Date.now()}`;

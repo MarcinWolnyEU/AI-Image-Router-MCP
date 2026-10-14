@@ -60,7 +60,7 @@ interface IconVariant {
   sizes: number[];
 }
 
-/** Everything the caller asked for, with defaults applied — the pipeline below never reads raw tool args. */
+/** Everything the caller asked for, with defaults applied. The pipeline below never reads raw tool args. */
 interface IconSetRequest {
   /** The declared set, in the caller's order. */
   declared: number[];
@@ -99,7 +99,7 @@ interface DerivedSet {
 function validateDeclaredSizes(declared: number[], wantsIco: boolean): void {
   const seen = new Set<number>();
   for (const size of declared) {
-    if (seen.has(size)) throw new ToolFailure(`Duplicate size ${size} in \`sizes\` — each size may appear once (the set must be unambiguous).`);
+    if (seen.has(size)) throw new ToolFailure(`Duplicate size ${size} in \`sizes\`: each size may appear once (the set must be unambiguous).`);
     seen.add(size);
     if (wantsIco && !isAllowedIcoSize(size)) {
       throw new ToolFailure(
@@ -117,7 +117,7 @@ function assignSizesToSources(declared: number[], variants: IconVariant[]): Map<
       if (!declared.includes(size)) {
         throw new ToolFailure(
           `variants[${v}] claims size ${size}, which is not in the declared \`sizes\` (${declared.join(', ')}). ` +
-            'Add it to `sizes` or remove it from the variant — the declared set is authoritative.',
+            'Add it to `sizes` or remove it from the variant. The declared set is authoritative.',
         );
       }
       const existing = assignment.get(size);
@@ -143,13 +143,13 @@ async function resolveSources(inputs: string[]): Promise<IconSource[]> {
   return sources;
 }
 
-/** Every declared size with its assigned source, largest first — the conventional icon order, and deterministic. */
+/** Every declared size with its assigned source, largest first (the conventional icon order, and deterministic). */
 function planMembers(declared: number[], assignment: Map<number, number>): SetMember[] {
   return declared.map((size) => ({ size, sourceIndex: assignment.get(size) ?? 0 })).sort((a, b) => b.size - a.size);
 }
 
 /**
- * Derive every size from its assigned source — in memory only. Nothing touches the disk until
+ * Derive every size from its assigned source, in memory only. Nothing touches the disk until
  * every size is derived AND the icon is verified, so any failure here really does leave nothing
  * written (no partial sets).
  */
@@ -172,7 +172,7 @@ async function deriveSizes(members: SetMember[], sources: IconSource[], req: Ico
         : (await convertImage(fitted.bytes, req.fmt, { tinifyToken: null, sourceMime: 'image/png', signal, logger: runtime.logger })).bytes;
     const detail = `${source.label} (${fitted.sourceWidth}x${fitted.sourceHeight}${fitted.applied === 'none' ? '' : `, ${fitted.applied}`})`;
     derived.push({ size: member.size, png: fitted.bytes, bytes, source, detail });
-    // Report each source's squaring decision once — from the largest size, which is processed
+    // Report each source's squaring decision once, from the largest size, which is processed
     // first (the note is the same shape for all of them).
     if (fitted.note && !squaringNotes.has(member.sourceIndex)) squaringNotes.set(member.sourceIndex, fitted.note);
   }
@@ -203,7 +203,7 @@ async function writeSizeFiles(derived: DerivedSize[], req: IconSetRequest, lines
     const saved = await writeMediaFile(dir, `${req.stem}-${e.size}x${e.size}.${req.fmt}`, e.bytes);
     lines.push(`  ${e.size}x${e.size} ← ${e.detail}  ${saved.path}`);
     // Honour output_mode like every other media tool (base64 returns the bytes inline); the
-    // per-size files never get an extra inline preview — a whole set would swamp the reply.
+    // per-size files never get an extra inline preview, since a whole set would swamp the reply.
     content.push(
       ...(await renderMediaContent({
         bytes: e.bytes,
@@ -222,7 +222,7 @@ async function writeSizeFiles(derived: DerivedSize[], req: IconSetRequest, lines
 async function writeIcoFile(ico: { icoBytes: Buffer; embedded: number[] }, req: IconSetRequest, lines: string[], content: ToolContent[]): Promise<void> {
   const { icoBytes, embedded } = ico;
   if (!req.save) {
-    lines.push(`Icon assembled with ${embedded.length} entries (${embedded.join(', ')}) — not saved (save:false): nothing was written; pass save:true to keep the files.`);
+    lines.push(`Icon assembled with ${embedded.length} entries (${embedded.join(', ')}); not saved (save:false): nothing was written; pass save:true to keep the files.`);
     return;
   }
   const icoFile = await writeMediaFile(runtime.outputDir(), `${req.stem}.ico`, icoBytes);
@@ -306,7 +306,7 @@ export function registerBuildIconSet(server: McpServer): void {
       title: 'Build a coherent icon set (all sizes + the .ico) in one call',
       description:
         'Derive a whole icon set from one master image in a single, verifiable operation: every requested size is produced ' +
-        'as its own file (exactly WxH) by downscaling the intended source — never by generating each size separately — and, ' +
+        'as its own file (exactly WxH) by downscaling the intended source (never by generating each size separately) and, ' +
         'unless you turn it off, they are assembled into one multi-size `.ico` that contains EXACTLY the sizes you declared. ' +
         'Smaller sizes can be pointed at a simplified `variants` source (e.g. a version without the wordmark) while still ' +
         'belonging to the same declared set. Non-square sources are fitted whole onto a square canvas by default (`square_fit:"pad"`), ' +
@@ -324,7 +324,7 @@ export function registerBuildIconSet(server: McpServer): void {
             'The declared set: every square size to produce, in pixels (e.g. [256,128,64,48,32,24,16]). Duplicates are rejected. ' +
               'When `ico` is on (default) each must be an allowed ICO size (' +
               ICO_ALLOWED_SIZES.join(', ') +
-              '). Sources are only ever downscaled — a size larger than the source is an error, never an upscale.',
+              '). Sources are only ever downscaled: a size larger than the source is an error, never an upscale.',
           ),
         variants: z
           .array(
@@ -335,7 +335,7 @@ export function registerBuildIconSet(server: McpServer): void {
           )
           .optional()
           .describe(
-            'Point specific sizes at a different source than the master — e.g. a simplified mark for 16/24/32 while the ' +
+            'Point specific sizes at a different source than the master, e.g. a simplified mark for 16/24/32 while the ' +
               'large sizes come from the detailed master. Every size listed here must also appear in `sizes`, and no size may ' +
               'be claimed twice.',
           ),
@@ -343,14 +343,14 @@ export function registerBuildIconSet(server: McpServer): void {
           .enum(['pad', 'crop'])
           .optional()
           .describe(
-            'How a non-square source becomes square. "pad" (default) fits the whole image onto a square canvas — nothing is ' +
+            'How a non-square source becomes square. "pad" (default) fits the whole image onto a square canvas, so nothing is ' +
               'cropped; "crop" center-crops it, which loses anything off-centre. The reply always states which was used.',
           ),
-        pad_color: z.string().optional().describe('Padding colour for `square_fit:"pad"` — "transparent" (default) or a hex like "#ffffff".'),
+        pad_color: z.string().optional().describe('Padding colour for `square_fit:"pad"`: "transparent" (default) or a hex like "#ffffff".'),
         output_format: z
           .enum(IMAGE_FORMATS)
           .optional()
-          .describe('Format for the per-size image files (default "png"). Encoded locally with sharp — no Tinify calls, no cost.'),
+          .describe('Format for the per-size image files (default "png"). Encoded locally with sharp; no Tinify calls, no cost.'),
         ico: z.boolean().optional().describe('Also assemble the multi-size Windows icon from the set (default true).'),
         name: z.string().optional().describe('Base name for the output files (default: derived from the master input, else "icon").'),
         save: z.boolean().optional().describe('Save the results to the output directory (default true).'),

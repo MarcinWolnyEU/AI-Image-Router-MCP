@@ -1,5 +1,5 @@
 /**
- * webgpu-forcecpu.ts — iteratively discover the minimal set of nodes that must be pinned
+ * webgpu-forcecpu.ts: iteratively discover the minimal set of nodes that must be pinned
  * to CPU (via the WebGPU EP `forceCpuNodeNames` option) for a BiRefNet/bria model to run on
  * WebGPU, and time the result. Each WebGPU run that hits the storage-buffer limit names one
  * offending node; we add it and retry until the graph runs (or we give up).
@@ -104,7 +104,7 @@ async function main() {
   const tensor = await preprocess(await readFile(resolvePath(image)), spec.mean, spec.std);
 
   // Optional: pre-seed the forced set (comma-separated node names) to test a known set in a
-  // fresh process — rules out cross-iteration WebGPU device-state bleed.
+  // fresh process; rules out cross-iteration WebGPU device-state bleed.
   const forced = new Set<string>(process.env.FORCED_SEED ? process.env.FORCED_SEED.split(',').filter(Boolean) : []);
   if (forced.size) console.error(`[forcecpu] seeded ${forced.size} forced nodes`);
 

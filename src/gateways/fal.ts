@@ -27,7 +27,7 @@ import type {
 // `fal.run` path, and the same code drives both image and video. See docs/API-NOTES.md.
 const QUEUE_BASE = 'https://queue.fal.run';
 
-// No public programmatic model-list API — curated lists (the wizard lets the user
+// No public programmatic model-list API; curated lists (the wizard lets the user
 // type any other fal endpoint id). Krea 2 (image) + NVIDIA Cosmos 3 (video) are the
 // headline integrations; a few well-known FLUX/video ids round out the menu.
 const FAL_IMAGE_FALLBACK: ModelInfo[] = falImageCatalog();
@@ -60,18 +60,24 @@ const isCosmos = (model: string): boolean => /cosmos/i.test(model);
 export interface FalGatewayOptions {
   /** Image job deadline (default 5 min). */
   imageDeadlineMs?: number;
-  /** Image job deadline when reference images ride along (default 10 min — Krea style refs run long). */
+  /** Image job deadline when reference images ride along (default 10 min, Krea style refs run long). */
   imageWithReferencesDeadlineMs?: number;
   /** Video job deadline (default 20 min). */
   videoDeadlineMs?: number;
   /** First poll interval (default 2 s; grows by 1 s per round up to 10 s). */
   pollIntervalMs?: number;
+  /**
+   * Opt in to relaxed fal safety settings (`enable_safety_checker:false`, `safety_tolerance:"5"`)
+   * on image models that carry those fields. Default false: fal's own defaults apply.
+   */
+  relaxSafety?: boolean;
 }
 const FAL_DEFAULTS: Required<FalGatewayOptions> = {
   imageDeadlineMs: 5 * 60_000,
   imageWithReferencesDeadlineMs: 10 * 60_000,
   videoDeadlineMs: 20 * 60_000,
   pollIntervalMs: 2000,
+  relaxSafety: false,
 };
 
 export class FalGateway implements Gateway {
@@ -83,7 +89,7 @@ export class FalGateway implements Gateway {
     // Krea uses aspect_ratio; for other models we map it onto image_size.
     imageAspectRatioParam: true,
     // Size is derived from the aspect ratio (Krea has no size param at all), so we
-    // don't ask for a separate resolution — pass image_size via provider_options.
+    // don't ask for a separate resolution, pass image_size via provider_options.
     imageResolutionParam: false,
     listsImageModels: false,
     listsVideoModels: false,
@@ -113,7 +119,7 @@ export class FalGateway implements Gateway {
   /**
    * aspect_ratio models (Krea/Ideogram) list their own ratios. The image_size families
    * (FLUX/Recraft/Cosmos) take exact pixels via width/height, AND the ratios that map onto
-   * their `image_size` tiers (`FAL_IMAGE_SIZE_BY_RATIO`) — offering none left the wizard's
+   * their `image_size` tiers (`FAL_IMAGE_SIZE_BY_RATIO`), offering none left the wizard's
    * default-aspect question with no effect and `generate_image` without an aspect_ratio.
    */
   imageAspectRatios(model: string): OptionList {
@@ -148,7 +154,7 @@ export class FalGateway implements Gateway {
       native: 'style',
       supported: ['style'],
       field: spec.referenceField,
-      note: 'Style/medium transfer ONLY — it copies the reference’s look (a photo reference makes a photographic result), not its object design. For subject conditioning use an image-edit model (e.g. fal-ai/flux-2-pro/edit) or the OpenRouter gateway.',
+      note: 'Style/medium transfer ONLY: it copies the look of the reference (a photo reference makes a photographic result), not its object design. For subject conditioning use an image-edit model (e.g. fal-ai/flux-2-pro/edit) or the OpenRouter gateway.',
     };
   }
 
@@ -171,7 +177,7 @@ export class FalGateway implements Gateway {
   }
 
   async generateImage(params: ImageGenParams): Promise<ImageGenResult> {
-    const input = buildFalImageInput(params);
+    const input = buildFalImageInput(params, { relaxSafety: this.opts.relaxSafety });
 
     const result = await this.runQueue(params.model, input, {
       signal: params.signal,
@@ -220,7 +226,7 @@ export class FalGateway implements Gateway {
   /**
    * Run a video job with the tuning params; if they were definitively rejected, retry with just
    * the core body (mirrors the OpenRouter /videos fallback). Every other failure is annotated
-   * for the user and thrown — see `rejectedTuningPhase` for what counts as "definitively".
+   * for the user and thrown, see `rejectedTuningPhase` for what counts as "definitively".
    */
   private async runVideoQueue(
     params: VideoGenParams,
@@ -251,7 +257,7 @@ export class FalGateway implements Gateway {
   /**
    * Submit a job to a fal model's queue, poll its status until COMPLETED, then
    * fetch and return the result payload. Uses the status/response URLs fal returns
-   * (don't reconstruct them — models with sub-paths like `krea/v2/large/...` need
+   * (don't reconstruct them, models with sub-paths like `krea/v2/large/...` need
    * fal's own app-relative URLs).
    */
   private async runQueue(modelId: string, input: Record<string, unknown>, opts: QueueOpts): Promise<Record<string, unknown>> {
@@ -287,7 +293,7 @@ export class FalGateway implements Gateway {
   /** Poll an accepted job until COMPLETED, then fetch its result payload. */
   private async awaitQueue(modelId: string, handle: FalQueueHandle, opts: QueueOpts): Promise<Record<string, unknown>> {
     // The job may complete on a poll that straddles the deadline. Never discard a
-    // finished (already billed) job as a timeout — only time out if we never saw COMPLETED
+    // finished (already billed) job as a timeout, only time out if we never saw COMPLETED
     // (`pollUntil` returns as soon as a step reports COMPLETED, whatever the clock says).
     try {
       await pollUntil<FalStatusResponse>({
@@ -307,7 +313,7 @@ export class FalGateway implements Gateway {
       });
     } catch (err) {
       if (!(err instanceof PollTimeoutError)) throw err;
-      // Still running at the deadline: cancel it so it is not billed after we report failure —
+      // Still running at the deadline: cancel it so it is not billed after we report failure,
       // unless it finished meanwhile, in which case the (already paid) result is collected after all.
       const outcome = await this.cancelJob(handle);
       if (outcome.kind !== 'already-completed') throw timeoutError(modelId, handle, opts.pollDeadlineMs, outcome);
@@ -352,10 +358,10 @@ function timeoutError(modelId: string, handle: FalQueueHandle, deadlineMs: numbe
 
 function cancelText(outcome: CancelOutcome): string {
   if ('detail' in outcome) {
-    return `cancelling it ${outcome.kind === 'refused' ? 'was refused' : 'failed'} (${outcome.detail}), so it may still complete and be billed — check your fal dashboard`;
+    return `cancelling it ${outcome.kind === 'refused' ? 'was refused' : 'failed'} (${outcome.detail}), so it may still complete and be billed; check your fal dashboard`;
   }
   if (outcome.kind === 'cancelled') return 'it was CANCELLED via its cancel_url, so it should not be billed further';
-  return 'fal gave no cancel_url, so it may still complete and be billed — check your fal dashboard';
+  return 'fal gave no cancel_url, so it may still complete and be billed; check your fal dashboard';
 }
 
 interface QueueOpts {
@@ -380,10 +386,10 @@ export class FalTimeoutError extends Error {
   }
 }
 
-/** fal answers an unknown endpoint with 404 `Application "<last segment>" not found` — name the id that was asked for. */
+/** fal answers an unknown endpoint with 404 `Application "<last segment>" not found`; name the id that was asked for. */
 function annotateUnknownModel(err: unknown, modelId: string): unknown {
   if (err instanceof GatewayHttpError && err.status === 404 && !err.note) {
-    err.note = `(fal has no endpoint "${modelId}" — check the model id at https://fal.ai/models; nothing was queued or billed)`;
+    err.note = `(fal has no endpoint "${modelId}"; check the model id at https://fal.ai/models; nothing was queued or billed)`;
   }
   return err;
 }
@@ -405,13 +411,13 @@ export function falVideoInputRefusal(params: VideoGenParams): string | null {
 
 /** Add the accepted job's request id to an error so a paid result can still be found. */
 function annotateFalJob(err: unknown, handle: FalQueueHandle): unknown {
-  const note = ` (fal request_id ${handle.requestId} was accepted and may still complete — it was not resubmitted)`;
+  const note = ` (fal request_id ${handle.requestId} was accepted and may still complete; it was not resubmitted)`;
   // A timeout already says what happened to the job (cancelled or not) and names its id.
   if (err instanceof FalTimeoutError) return err;
   if (!handle.requestId || !(err instanceof Error) || err.message.includes(note)) return err;
   try {
     err.message += note; // keeps the error's type (GatewayHttpError status etc.)
-    // describeError shows a GatewayHttpError's provider message, not `message` — carry the note too.
+    // describeError shows a GatewayHttpError's provider message, not `message`, carry the note too.
     if (err instanceof GatewayHttpError) err.note = note.trim();
     return err;
   } catch {
@@ -422,7 +428,7 @@ function annotateFalJob(err: unknown, handle: FalQueueHandle): unknown {
 
 /** A 5xx on the queue submit: say the job may exist (and was deliberately not re-sent). */
 function annotateAmbiguousSubmit(err: GatewayHttpError): GatewayHttpError {
-  const note = '(the submit failed after fal may already have queued the job — it was not re-sent; check your fal dashboard before retrying)';
+  const note = '(the submit failed after fal may already have queued the job; it was not re-sent; check your fal dashboard before retrying)';
   if (!err.note) {
     err.note = note;
     err.message += ` ${note}`;
@@ -432,10 +438,10 @@ function annotateAmbiguousSubmit(err: GatewayHttpError): GatewayHttpError {
 
 /**
  * Were the optional tuning params DEFINITIVELY rejected, with no job left running? Only then
- * may the job be resubmitted without them: the submit itself was refused with a 422 (validation —
+ * may the job be resubmitted without them: the submit itself was refused with a 422 (validation,
  * provably nothing queued), or the queued job finished as a 422 on its result. A 5xx on the
  * SUBMIT is ambiguous (fal's edge can fail after the job was enqueued), and a failure while
- * POLLING an accepted job (status 5xx, network error, deadline) leaves a job running — neither
+ * POLLING an accepted job (status 5xx, network error, deadline) leaves a job running, neither
  * is resubmitted: a second submit could pay for the same video twice.
  */
 function rejectedTuningPhase(handle: FalQueueHandle | undefined, httpErr: GatewayHttpError | null): 'submit' | 'result' | null {
@@ -555,56 +561,60 @@ function resolvedSize(spec: FalImageModelSpec, params: ImageGenParams): { width?
 }
 
 /**
- * Build the fal image request body from the per-model spec. Seeded defaults
- * (`output_format:"png"`, `safety_tolerance:"5"`, `enable_safety_checker:false`) are only
- * sent to models whose schema carries them. Object `image_size` is used when the model
+ * Build the fal image request body from the per-model spec. `output_format:"png"` is seeded on
+ * models whose schema carries it. The safety fields (`safety_tolerance:"5"`,
+ * `enable_safety_checker:false`) are sent only when `opts.relaxSafety` is true (the
+ * `fal.relaxSafety` config flag, off by default) and only to models that carry them. Object `image_size` is used when the model
  * accepts it and a width (and/or height) was requested; otherwise the nearest `image_size`
  * enum tier (or `aspect_ratio` for Krea/Ideogram). References are hard-rejected BEFORE
  * submitting for models with no conditioning input (so no credits are spent).
  */
-export function buildFalImageInput(params: ImageGenParams): Record<string, unknown> {
+export function buildFalImageInput(params: ImageGenParams, opts: { relaxSafety?: boolean } = {}): Record<string, unknown> {
   const spec = falImageSpec(params.model) ?? {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM_FALLBACK,
   };
   const input: Record<string, unknown> = { prompt: params.prompt };
 
-  // Model-specific safety/output knobs (only where the model reads them).
+  // Model-specific output knob (only where the model reads it).
   if (spec.outputFormat) input['output_format'] = 'png';
-  if (spec.enableSafetyChecker) input['enable_safety_checker'] = false;
-  if (spec.safetyTolerance) input['safety_tolerance'] = '5';
+  // Safety settings stay at fal's defaults unless the operator opted in (`fal.relaxSafety`).
+  if (opts.relaxSafety) {
+    if (spec.enableSafetyChecker) input['enable_safety_checker'] = false;
+    if (spec.safetyTolerance) input['safety_tolerance'] = '5';
+  }
 
   applyFalReferences(input, spec, params);
   applyFalColors(input, spec, params);
   if (spec.sizeField === 'image_size') applyImageSizeFields(input, spec, params);
   else applyAspectRatioFields(input, params);
 
-  // Escape hatch — anything the model supports but we don't surface (creativity,
+  // Escape hatch, anything the model supports but we don't surface (creativity,
   // styles, moodboards, image_size override, seed, …).
   if (params.extra) Object.assign(input, params.extra);
   return input;
 }
 
-/** Reference images, mapped to the model's own field — or hard-rejected BEFORE submitting if it has none. */
+/** Reference images, mapped to the model's own field, or hard-rejected BEFORE submitting if it has none. */
 function applyFalReferences(input: Record<string, unknown>, spec: FalImageModelSpec, params: ImageGenParams): void {
   const refs = params.references;
   if (!refs || refs.length === 0) return;
   if (spec.referenceField === 'image_style_references') {
-    // Krea 2's `image_style_references[]` items are `{ image_url, strength? }` — NOT `{ url }`.
+    // Krea 2's `image_style_references[]` items are `{ image_url, strength? }`, NOT `{ url }`.
     // `image_url` must be publicly accessible, so a bytes/data-URL reference is converted to
     // a data URL; an http(s) URL is passed through. (`strength` defaults to 1; allow override
     // via provider_options, which is merged last.)
     input['image_style_references'] = refs.map((r) => ({ image_url: referenceToUrl(r) }));
   } else if (spec.referenceField === 'image_urls') {
-    // FLUX 2 Pro *Edit* — subject conditioning; a flat array of URLs.
+    // FLUX 2 Pro *Edit*: subject conditioning; a flat array of URLs.
     input['image_urls'] = refs.map((r) => referenceToUrl(r));
   } else {
-    // Hard fail before the queue submit — no image generation, no credits.
+    // Hard fail before the queue submit: no image generation, no credits.
     throw new Error(`fal (${params.model}) cannot take reference images: it has no image-conditioning input. Use a model that supports image_style_references, or pass the reference via provider_options if the model offers one.`);
   }
 }
 
 /**
- * Structured colour constraints — only Recraft has a native palette input, so a
+ * Structured colour constraints: only Recraft has a native palette input, so a
  * pinned palette reaches it as DATA there and as the compiled prompt block
  * everywhere else (the tool layer always puts it in the prompt too).
  */

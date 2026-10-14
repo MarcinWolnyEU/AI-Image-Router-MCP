@@ -1,10 +1,10 @@
 /**
  * Minimal fetch-based HTTP helpers shared by every gateway client.
- * No third-party HTTP libs — Node 20 global fetch + AbortSignal.
+ * No third-party HTTP libs: Node 20 global fetch + AbortSignal.
  */
 
 export class GatewayHttpError extends Error {
-  /** Caller-added context (e.g. "the job was accepted — not resubmitted"); shown by `describeError`. */
+  /** Caller-added context (e.g. "the job was accepted, not resubmitted"); shown by `describeError`. */
   note?: string;
 
   constructor(
@@ -38,7 +38,7 @@ export class GatewayHttpError extends Error {
 /**
  * Diagnostic hook: every HTTP failure (non-2xx, network error, retry, or a 200
  * whose body fails to JSON-parse) is reported here so it lands in the log with
- * the RAW upstream body — otherwise only the post-processed tool error survives
+ * the RAW upstream body; otherwise only the post-processed tool error survives
  * and debugging needs a live API probe. The runtime wires this to its logger;
  * when unset (tests/harnesses) failures are simply not logged.
  */
@@ -84,8 +84,8 @@ export interface RequestOpts {
    * GET/HEAD/OPTIONS/PUT/DELETE and FALSE for POST/PATCH: a POST may start a billed
    * generation, and a timeout / 5xx / dropped connection doesn't tell us whether the
    * provider already accepted (and charged for) it. A non-idempotent request is only
-   * retried when the failure proves it was NOT processed — HTTP 429, or a connection
-   * that was never established (DNS failure, refused, connect timeout) — and a 200
+   * retried when the failure proves it was NOT processed (HTTP 429, or a connection
+   * that was never established: DNS failure, refused, connect timeout), and a 200
    * whose body won't parse is reported instead of re-sent. Pass `true` for a POST
    * that is harmless to repeat (e.g. one that creates no billable work).
    */
@@ -149,8 +149,8 @@ const mayRetryAfterError = (err: unknown, attempt: number, retries: number, idem
 
 /**
  * We discard this response and retry: log why the upstream failed (rate-limit notice, 5xx
- * detail — read from a clone so the caller's body is untouched), then wait. 429/503 may carry a
- * standard `Retry-After` (seconds) — honoured (capped) instead of guessing; otherwise
+ * detail, read from a clone so the caller's body is untouched), then wait. 429/503 may carry a
+ * standard `Retry-After` (seconds), honoured (capped) instead of guessing; otherwise
  * exponential backoff.
  */
 async function backOffBeforeRetry(res: Response, ctx: { method: string; url: string; attempt: number }): Promise<void> {
@@ -175,7 +175,7 @@ export async function rawRequest(url: string, opts: RequestOpts = {}): Promise<R
       if (!isRetryableStatus(res.status, idempotent) || attempt >= retries) return res;
       await backOffBeforeRetry(res, { method, url, attempt });
     } catch (err) {
-      // If the caller's own signal aborted, do not retry — propagate.
+      // If the caller's own signal aborted, do not retry: propagate.
       if (signal?.aborted) throw err;
       lastErr = err;
       const willRetry = mayRetryAfterError(err, attempt, retries, idempotent);
@@ -221,7 +221,7 @@ export async function postJson<T = unknown>(
  * input"). For an idempotent request that is a transient failure, so re-fetch
  * with backoff rather than surfacing a cryptic parse error. A non-idempotent one
  * (a POST) is NOT re-sent: the 200 means the provider accepted it, and repeating
- * it could start — and bill — the same work twice. An empty body is treated as `{}`.
+ * it could start (and bill) the same work twice. An empty body is treated as `{}`.
  */
 async function requestJson<T = unknown>(url: string, opts: RequestOpts = {}): Promise<T> {
   const retries = isIdempotentRequest(opts) ? (opts.retries ?? 2) : 0;

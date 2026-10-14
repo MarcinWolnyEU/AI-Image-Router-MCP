@@ -44,7 +44,7 @@ const OPENROUTER_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4
 const OPENROUTER_ASPECT_RATIOS_TALL = ['1:4', '4:1', '1:8', '8:1']; // some image models accept these extremes
 const OPENROUTER_IMAGE_SIZES = ['512', '1K', '2K', '4K']; // dedicated /images resolution tiers
 
-// No public programmatic video-model list endpoint — curated fallback (ids best-effort).
+// No public programmatic video-model list endpoint; curated fallback (ids best-effort).
 const OPENROUTER_VIDEO_FALLBACK: ModelInfo[] = [
   { id: 'google/veo-3.1', name: 'Veo 3.1' },
   { id: 'google/veo-3.1-fast', name: 'Veo 3.1 Fast' },
@@ -92,8 +92,8 @@ export class OpenRouterGateway implements Gateway {
 
   /**
    * Best-effort warm-up: cache the configured image model's capabilities. Never throws.
-   * With a persistent `cache`, a stored answer (≤ 7 days old) is used at once — a warm start
-   * makes no network call — and one older than an hour is refreshed in the background for the
+   * With a persistent `cache`, a stored answer (≤ 7 days old) is used at once, a warm start
+   * makes no network call, and one older than an hour is refreshed in the background for the
    * next start. Only a cold start waits on `/images/models/{id}/endpoints`.
    */
   async prepare(ctx: { imageModel?: string | null; cache?: CapabilityCache }): Promise<void> {
@@ -182,7 +182,7 @@ export class OpenRouterGateway implements Gateway {
   /**
    * Resolution tiers. With live capabilities: the model's own enum, or
    * `{values:[], source:'api'}` when the model has NO resolution parameter at all
-   * (gpt-image-2.5 — it renders at its native size and silently ignores the tier).
+   * (gpt-image-2.5, it renders at its native size and silently ignores the tier).
    * Without them: the documented generic tiers.
    */
   imageResolutions(model: string): OptionList {
@@ -284,7 +284,7 @@ export class OpenRouterGateway implements Gateway {
 
     // A 200 with no image is a transient empty completion. Retry ONCE. The HTTP layer
     // never re-sends this POST on a timeout/5xx (it may already be running and billed),
-    // so a 5xx gets exactly one retry here — unless the body says it is deterministic
+    // so a 5xx gets exactly one retry here, unless the body says it is deterministic
     // (a 502 safety block / moderation flag fails identically every time). If it still
     // fails we surface it explained (status, error_type, moderation reasons) and let
     // diagnoseFailure add account/config hints.
@@ -329,7 +329,7 @@ export class OpenRouterGateway implements Gateway {
     maxAttempts: number,
   ): Promise<'same-attempt' | 'next-attempt'> {
     // Provider refused our exact pixel size (e.g. gpt-image: "below the current
-    // minimum pixel budget" for 256x256). Fall back to aspect_ratio + tier — the
+    // minimum pixel budget" for 256x256). Fall back to aspect_ratio + tier, the
     // model renders at its native size and the tool layer downsizes locally if
     // it must (ico); a failed request is never billed.
     if (run.built.exactSize && isSizeRejection(err)) {
@@ -351,7 +351,7 @@ export class OpenRouterGateway implements Gateway {
 
   /**
    * OpenRouter relays an UPSTREAM failure as an HTTP 200 carrying an `error`
-   * object instead of data — surface it explained and fail fast (deterministic).
+   * object instead of data, surface it explained and fail fast (deterministic).
    */
   private failOnErrorBody(data: { error?: ORError } | undefined, model: string): void {
     const apiErr = apiErrorMessage(data, model);
@@ -448,7 +448,7 @@ export class OpenRouterGateway implements Gateway {
         causes.push(...explainOpenRouterError(err.status, err.bodyText, ctx.model).hints);
       }
 
-      // (1) "No endpoints match your data policy / guardrails" — most often the
+      // (1) "No endpoints match your data policy / guardrails", most often the
       // model's only provider is on the account's "Ignored Providers" list.
       if (/no endpoints available|guardrail restrictions and data policy/i.test(haystack)) {
         const provider = await this.providerLabelFor(ctx.model);
@@ -463,7 +463,7 @@ export class OpenRouterGateway implements Gateway {
         causes.push(...(await this.billingHints(isOpenRouterCreditLimit(body, msg))));
       }
     } catch {
-      /* diagnosis is best-effort — never throw from here */
+      /* diagnosis is best-effort, never throw from here */
     }
     return causes;
   }
@@ -486,7 +486,7 @@ export class OpenRouterGateway implements Gateway {
   /**
    * Hints for a billing/quota failure. OpenRouter's own 402 says where the limit came from
    * (`metadata.limit_source: "openrouter_credits"`, "Insufficient credits"): that is the
-   * account's credit check, so "BYOK" is NOT a cause — the old "balance > $0.10 ⇒ Include
+   * account's credit check, so "BYOK" is NOT a cause, the old "balance > $0.10 ⇒ Include
    * BYOK" guess fired on exactly these and contradicted the top-up hint. "Include BYOK" is
    * only suggested for an UPSTREAM quota body (e.g. OpenAI's "You exceeded your current
    * quota", relayed by OpenRouter) while OpenRouter credit remains, and never when `/key`
@@ -499,7 +499,7 @@ export class OpenRouterGateway implements Gateway {
         ? [
             `OpenRouter's own credit check refused the request although the account shows $${remaining.toFixed(2)} left. ` +
               'Credit held by generations still running (e.g. background video jobs) and the request\'s worst-case cost count against ' +
-              'the balance — wait for running jobs to finish, or top up: https://openrouter.ai/settings/credits',
+              'the balance: wait for running jobs to finish, or top up: https://openrouter.ai/settings/credits',
           ]
         : [];
     }
@@ -611,7 +611,7 @@ function buildVideoBodies(params: VideoGenParams): { core: Record<string, unknow
   if (params.prompt) core['prompt'] = params.prompt;
   Object.assign(core, videoReferenceFields(params.references));
 
-  // Optional tuning params — some models 500 on these, hence kept separate (see submitVideo).
+  // Optional tuning params: some models 500 on these, hence kept separate (see submitVideo).
   const optional: Record<string, unknown> = {};
   if (params.resolution) optional['resolution'] = params.resolution;
   if (params.aspectRatio) optional['aspect_ratio'] = params.aspectRatio;
@@ -672,16 +672,17 @@ function truncate(s: string, n: number): string {
 }
 
 // Masked key identifier for pointing the user at the right row in the OpenRouter
-// keys dashboard, e.g. "sk-or-v1-cec...4c3" — never the full secret.
+// keys dashboard, e.g. "sk-or-v1-cec...4c3", never the full secret.
 function keyIdentifier(token: string): string {
-  // Too short to mask meaningfully (real keys are ~70 chars) — say nothing rather than leak it.
+  // Too short to mask meaningfully (real keys are ~70 chars); say nothing rather than leak it.
   return token.length <= 15 ? '(short/invalid key)' : `${token.slice(0, 12)}...${token.slice(-3)}`;
 }
 
 // OpenRouter relays upstream failures (quota/billing, provider errors, data-policy)
 // as an `error` object in an otherwise-200 body. Format it for the caller, or return
-// undefined when there's no error. Keep the upstream message verbatim — it's the
-// actionable part (e.g. "You exceeded your current quota...").
+// undefined when there's no error. It goes through the same explainer as HTTP errors:
+// the upstream message, the actionable part (e.g. "You exceeded your current quota..."),
+// is kept behind the status headline, truncated to 600 chars, and the hints are appended.
 function apiErrorMessage(data: { error?: ORError } | undefined, model: string): string | undefined {
   const e = data?.error;
   if (!e || (e.message == null && e.code == null)) return undefined;

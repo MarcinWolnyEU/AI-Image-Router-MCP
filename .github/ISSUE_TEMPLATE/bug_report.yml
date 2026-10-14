@@ -1,0 +1,87 @@
+name: Bug report
+description: The server crashed, a tool returned a wrong result, or it behaved differently from the README.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the README's Troubleshooting section first.
+        Problems with your gateway account (keys, credit, moderation blocks) belong with the gateway, not here.
+        Security problems go to [a private advisory](https://github.com/MarcinWolnyEU/ai-image-router-mcp/security/advisories/new), not here.
+        **Never paste an API key, a token file or an `Authorization` header.** Remove them from configs and logs first.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The `version` in `package.json`, or the commit if you run a checkout.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run it
+      options:
+        - npx -y ai-image-router-mcp
+        - Checkout (node dist/index.js)
+        - Cursor plugin
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: gateway
+    attributes:
+      label: Gateway
+      options:
+        - OpenRouter
+        - Mistral AI
+        - Eden AI
+        - fal.ai
+        - Not gateway related (local tool)
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio
+        - http
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Node.js and operating system
+      description: Output of `node --version`, plus your OS.
+      placeholder: Node 22.11.0, Windows 11
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: The client or harness that calls the server, with its version if you know it.
+      placeholder: Claude Desktop 1.2.3
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The tool name and arguments you sent, and the relevant part of `config.json` (never the tokens).
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The server's stderr or the file from your `logs` directory. The `health_status` tool output helps too. Remove anything private first.
+      render: text

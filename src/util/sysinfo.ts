@@ -51,7 +51,7 @@ export interface GpuProbeOptions {
 /**
  * A GPU-memory probe: async, ONE query shared by concurrent callers, the answer cached for
  * `ttlMs` (free VRAM moves, but not within a health call). Resolves null when nvidia-smi is
- * absent or there's no NVIDIA GPU — treat VRAM as "unknown" then. (Only NVIDIA is queried;
+ * absent or there's no NVIDIA GPU; treat VRAM as "unknown" then. (Only NVIDIA is queried;
  * AMD/Intel/Apple VRAM isn't reported by a portable CLI.)
  */
 export function createGpuProbe(opts: GpuProbeOptions = {}): () => Promise<GpuInfo | null> {

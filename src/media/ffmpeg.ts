@@ -28,7 +28,7 @@ export async function ffmpegAvailable(): Promise<boolean> {
 /**
  * Provide a usable input file path for ffmpeg, writing ONE temp copy if we only have bytes.
  * A caller that runs several ffmpeg/ffprobe passes over the same input (frame search) wraps
- * them all in one call — each primitive below would otherwise write its own copy.
+ * them all in one call; each primitive below would otherwise write its own copy.
  */
 export async function withVideoFile<T>(media: ResolvedMedia, fn: (pathMedia: ResolvedMedia & { path: string }) => Promise<T>): Promise<T> {
   if (media.path) return fn(media as ResolvedMedia & { path: string });
@@ -59,7 +59,7 @@ async function withInputFile<T>(media: ResolvedMedia, fn: (inputPath: string) =>
 
 function run(args: string[], signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    // `-nostdin`: never read stdin — ffmpeg otherwise treats stdin as interactive
+    // `-nostdin`: never read stdin; ffmpeg otherwise treats stdin as interactive
     // and can block indefinitely in non-TTY/automation contexts.
     const p = spawn('ffmpeg', ['-nostdin', ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
@@ -103,7 +103,7 @@ export async function extractFrame(media: ResolvedMedia, atSeconds: number, outP
 
 // Re-encode the video stream (crop/scale need it) to H.264 in an mp4 with a web-friendly moov
 // atom. Audio is re-encoded to AAC rather than copied: `-c:a copy` fails outright for codecs an
-// mp4 can't carry (PCM, Vorbis — common in .mkv/.webm/.mov inputs).
+// mp4 can't carry (PCM and Vorbis, both common in .mkv/.webm/.mov inputs).
 const ENCODE = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 
 /** Convert any video container/codec to an H.264/AAC mp4 (`transform_media` `output_format:"mp4"`). */

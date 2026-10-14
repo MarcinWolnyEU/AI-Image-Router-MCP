@@ -18,9 +18,9 @@ export interface CapabilityCache {
 /**
  * Capability cache persisted as one JSON file (`.cache/capabilities.json` in the project).
  * It exists so a server start does not wait on the network: stdio clients spawn a fresh
- * process per session — Vibe CLI per TOOL CALL — and each used to block in the OpenRouter
+ * process per session, Vibe CLI per TOOL CALL, and each used to block in the OpenRouter
  * capability lookup (up to 12 s on a slow API). Read once, synchronously, at construction;
- * writes are atomic (temp file + rename) and best-effort — a cache that can't be read or
+ * writes are atomic (temp file + rename) and best-effort, a cache that can't be read or
  * written just behaves as empty.
  */
 export class FileCapabilityCache implements CapabilityCache {

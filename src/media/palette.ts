@@ -1,5 +1,5 @@
 /**
- * Structured generation constraints — colour palette, exclusions, background —
+ * Structured generation constraints (colour palette, exclusions, background)
  * plus the verification that measures a result against them.
  *
  * Why this exists: the only channel most image gateways offer for "use exactly
@@ -10,15 +10,15 @@
  *
  *  - COMPILE (`compileConstraints`) turns the structured spec into ONE
  *    deterministic constraint block appended to the prompt, so it reaches every
- *    gateway. Gateways additionally map what they can natively — fal Recraft
+ *    gateway. Gateways additionally map what they can natively: fal Recraft
  *    `colors[]`/`background_color`, fal `negative_prompt`, OpenRouter
- *    `background` — so the constraint survives provider mapping instead of
+ *    `background`, so the constraint survives provider mapping instead of
  *    being dropped at the boundary.
  *  - VERIFY (`analyzePalette` / `analyzeBackground`) measures the produced image
  *    against the same spec, so the tool reports whether the model honoured it
  *    rather than leaving the caller to eyeball thumbnails.
  *
- * Everything here is local (sharp only) — no network, no cost.
+ * Everything here is local (sharp only), with no network and no cost.
  */
 import sharp from 'sharp';
 
@@ -92,7 +92,7 @@ export function rgbToHsv(c: Rgb): { h: number; s: number; v: number } {
 
 export type HueFamily = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'magenta';
 
-/** The eight hue families we can name — used to spell out which hues are OFF-palette. */
+/** The eight hue families we can name, used to spell out which hues are OFF-palette. */
 export const HUE_FAMILIES: HueFamily[] = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'magenta'];
 
 const HUE_BANDS: { family: HueFamily; from: number; to: number }[] = [
@@ -155,7 +155,7 @@ export function parseBackgroundSpec(spec: string): BackgroundSpec {
 /**
  * Common exclusions expanded to the phrasing that actually suppresses them.
  * ("no text" alone leaves models adding letters; naming the whole family works
- * far better — this is the nagging the caller had to do by hand, done once.)
+ * far better; this is the nagging the caller had to do by hand, done once.)
  */
 const EXCLUSION_EXPANSIONS: Record<string, string> = {
   text: 'text, letters, words, numbers, labels, captions, typography, logotype',
@@ -187,7 +187,7 @@ export function expandExclusion(term: string): string {
 }
 
 export interface GenerationConstraints {
-  /** Pinned accent colours — any hex form; normalized on compile. */
+  /** Pinned accent colours, in any hex form; normalized on compile. */
   palette?: string[];
   /** Elements the image must not contain ("text", "watermark", "cable", …). */
   exclude?: string[];
@@ -210,7 +210,7 @@ export interface CompiledConstraints {
   summary: string[];
 }
 
-/** Hue families NOT covered by the pinned palette — spelled out so they can be excluded by name. */
+/** Hue families NOT covered by the pinned palette, spelled out so they can be excluded by name. */
 export function offPaletteFamilies(palette: string[]): HueFamily[] {
   const covered = new Set<string>();
   for (const hex of palette) covered.add(hueFamily(parseHexColor(hex)));
@@ -324,14 +324,14 @@ export const DEFAULT_BACKGROUND_TOLERANCE = 24;
 /** Share of accent pixels a pinned colour needs to count as actually present. */
 const PRESENT_COVERAGE = 0.02;
 
-/** Downscale to a small raw RGBA sample — analysis is statistical, full res buys nothing. */
+/** Downscale to a small raw RGBA sample. Analysis is statistical, so full res buys nothing. */
 async function sampleRgba(bytes: Buffer, side = 160): Promise<{ data: Buffer; width: number; height: number; channels: number }> {
   const { data, info } = await sharp(bytes)
     .resize({ width: side, height: side, fit: 'inside', withoutEnlargement: true })
     .ensureAlpha()
     .raw()
     // sharp processes in sRGB and can return a different channel count than the
-    // source had — always read the real stride from `info`, never assume 4.
+    // source had; always read the real stride from `info`, never assume 4.
     .toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height, channels: info.channels };
 }
@@ -396,7 +396,7 @@ function scanAccentPixels(
     if (alphaAt(data, i, channels) < 128) continue;
     const px: Rgb = { r: data[i]!, g: data[i + 1]!, b: data[i + 2]! };
     const { s, v } = rgbToHsv(px);
-    if (s < 0.18 || v < 0.12) continue; // neutral / near-black — not an accent
+    if (s < 0.18 || v < 0.12) continue; // neutral / near-black, not an accent
     accent += 1;
     const nearest = nearestTarget(px, targets);
     if (nearest.index >= 0 && nearest.distance <= tolerance) {
@@ -430,7 +430,7 @@ function dominantOffPalette(offBuckets: Map<number, OffBucket>, accent: number):
 /**
  * Measure how much of the image's accent (saturated, opaque) colour actually
  * lands on the pinned palette, and name the dominant off-palette accent when it
- * does not. Neutrals (near-white/black/grey) are ignored — a palette pins the
+ * does not. Neutrals (near-white/black/grey) are ignored: a palette pins the
  * accents, not the shading.
  */
 export async function analyzePalette(bytes: Buffer, hexes: string[], opts: { tolerance?: number } = {}): Promise<PaletteReport> {
@@ -460,7 +460,7 @@ export interface BackgroundReport {
   meanHex: string;
   /** Share of border pixels that are transparent (0..1). */
   transparentFraction: number;
-  /** Share of border pixels within tolerance of the mean — i.e. how flat the background is. */
+  /** Share of border pixels within tolerance of the mean, i.e. how flat the background is. */
   uniformity: number;
   /** Share of border pixels matching the spec (null for a free-text spec). */
   matchFraction: number | null;
@@ -553,7 +553,7 @@ export function describePaletteReport(r: PaletteReport): string[] {
   }
   const lines = [`Palette check (tolerance ${r.tolerance}, ${pct(r.onPaletteFraction)} of accent pixels on-palette):`];
   for (const c of r.colors) {
-    lines.push(`  ${c.present ? '✓' : '✗'} ${c.hex} — ${pct(c.coverage)} of accent pixels`);
+    lines.push(`  ${c.present ? '✓' : '✗'} ${c.hex}: ${pct(c.coverage)} of accent pixels`);
   }
   if (r.offPalette && r.offPalette.coverage >= 0.05) {
     lines.push(`  ⚠ dominant off-palette accent: ${r.offPalette.hex} (${r.offPalette.family}, ${pct(r.offPalette.coverage)})`);
@@ -568,7 +568,7 @@ export function describeBackgroundReport(r: BackgroundReport): string[] {
   }
   const want = r.spec.kind === 'transparent' ? 'transparent' : r.spec.kind === 'color' ? r.spec.hex : r.spec.raw;
   return [
-    `Background check: ${r.matched ? '✓' : '✗'} ${want} — ${pct(r.matchFraction ?? 0)} of the border matches` +
+    `Background check: ${r.matched ? '✓' : '✗'} ${want}: ${pct(r.matchFraction ?? 0)} of the border matches` +
       (r.spec.kind === 'color' ? ` (border mean ${r.meanHex}, ${pct(r.uniformity)} uniform)` : ` (${pct(r.transparentFraction)} transparent)`),
   ];
 }

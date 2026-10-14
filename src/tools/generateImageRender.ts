@@ -10,7 +10,7 @@ import { analyzeBackground, analyzePalette, describeBackgroundReport, describePa
 
 export type OutputFormat = 'png' | 'webp' | 'jpg' | 'avif' | 'ico';
 
-/** What to measure a produced image against — snapshotted so an async job can still report it. */
+/** What to measure a produced image against. Snapshotted so an async job can still report it. */
 export interface ConstraintCheck {
   palette?: string[];
   background?: string;
@@ -62,7 +62,7 @@ function summaryLines(result: ImageGenResult, opts: RenderOpts): string[] {
   // How the request was adapted to the model (dropped resolution tier, rejected exact size, …).
   for (const w of result.warnings ?? []) lines.push(`Note: ${w}`);
   lines.push(...requestContextLines(opts));
-  // save:false with previews off leaves the reply with nothing to look at — say so.
+  // save:false with previews off leaves the reply with nothing to look at, so say so.
   if (!opts.save && !opts.inline) lines.push(NOTHING_RETURNED_NOTE);
   return lines;
 }
@@ -78,7 +78,7 @@ function requestContextLines(opts: RenderOpts): string[] {
 }
 
 /**
- * The model ignored (or could not honour) the exact pixel size the caller asked for — fal
+ * The model ignored (or could not honour) the exact pixel size the caller asked for: fal
  * Recraft/Krea, Mistral, Eden tiers… Said per image; the bytes are kept as delivered.
  */
 async function sizeMismatchLine(bytes: Buffer, requested: RenderOpts['requestedSize'], idx: number, model: string): Promise<string[]> {
@@ -86,7 +86,7 @@ async function sizeMismatchLine(bytes: Buffer, requested: RenderOpts['requestedS
   const info = await imageInfo(bytes);
   if (!info || (info.width === requested.width && info.height === requested.height)) return [];
   return [
-    `#${idx}: Note: requested ${requested.width}×${requested.height}, but ${model} returned ${info.width}×${info.height} — ` +
+    `#${idx}: Note: requested ${requested.width}×${requested.height}, but ${model} returned ${info.width}×${info.height}; ` +
       'it does not honour exact pixel sizes. Resize locally with transform_media (width/height) if you need that size.',
   ];
 }
@@ -110,7 +110,7 @@ export async function renderImageResult(result: ImageGenResult, opts: RenderOpts
 /**
  * Normalise a (possibly partial / snapshotted) media-options record into render options.
  * `extra` carries what is not part of the snapshot: the reference-download and constraint
- * lines for the reply header, and — for a synchronous call only — the client's abort signal.
+ * lines for the reply header, and (for a synchronous call only) the client's abort signal.
  */
 export function renderOptsFromMedia(
   mo: Partial<ImageJobMediaOpts> | undefined,
@@ -154,11 +154,11 @@ interface SaveContext {
   previewMaxBytes: number;
   lines: string[];
   content: ToolContent[];
-  /** The model's raw output, as delivered (type + pixel size) — reported on every path. */
+  /** The model's raw output, as delivered (type + pixel size), reported on every path. */
   sourceDesc: string;
   /**
    * Describes the PNG actually written as the kept original: the model's bytes when they
-   * already were a PNG, else the PNG re-encode (saying what it was re-encoded from) — the
+   * already were a PNG, else the PNG re-encode (saying what it was re-encoded from); the
    * reply used to label a 313 KB PNG file with the provider's "image/jpeg … (101 KB)".
    */
   describeSourcePng: (sourcePng: Buffer) => Promise<string>;
@@ -167,7 +167,7 @@ interface SaveContext {
    * preview, or full base64). Used by every save branch below.
    */
   emit: (bytes: Buffer, mimeType: string, saved: SavedFile, description: string) => Promise<void>;
-  /** Inline preview only (used when not saving — base64 mode always saves). */
+  /** Inline preview only (used when not saving; base64 mode always saves). */
   previewOnly: (bytes: Buffer, mimeType: string) => Promise<void>;
 }
 
@@ -226,7 +226,7 @@ async function saveAsIco(ctx: SaveContext, img: GeneratedImage, idx: number, opt
   const icoBytes = buildIco([icoImageFromPng(fitted.bytes)]);
   const icoDesc = `${ICO_MIME} ${size}×${size} (${Math.round(icoBytes.length / 1024)} KB)`;
   if (!opts.save) {
-    // Inline preview of an ICO (used only when not saving) — render the largest entry to PNG.
+    // Inline preview of an ICO (used only when not saving): render the largest entry to PNG.
     if (opts.inline) content.push(...(await icoPreviewContent(icoBytes, previewMaxBytes)));
     if (img.sourceUrl) lines.push(`#${idx}: ${img.sourceUrl}`);
     return;
@@ -273,7 +273,7 @@ async function saveOptimized(
       await saveConverted(ctx, sourcePng, idx, opts, stem, format, tinifyKey);
     }
   } catch (err) {
-    // Optimization failed — don't lose the generation; save the source PNG and warn.
+    // Optimization failed: don't lose the generation; save the source PNG and warn.
     runtime.logger.warn('Image optimization failed; saving the original PNG instead', { error: (err as Error).message });
     runtime.health.recordError('tinify', (err as Error).message);
     await saveSourcePngAfterFailure(ctx, sourcePng, idx, opts, stem, err as Error);

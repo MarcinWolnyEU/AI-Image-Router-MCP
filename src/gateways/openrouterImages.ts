@@ -1,11 +1,11 @@
 /**
- * OpenRouter Image API — the PURE, unit-testable half of the gateway:
+ * OpenRouter Image API: the PURE, unit-testable half of the gateway:
  *
  *  1. per-model capability records (`GET /api/v1/images/models/{id}/endpoints`
  *     → `supported_parameters`), which say what a model actually accepts
  *     (resolution tier, quality levels, background modes, n, references …);
  *  2. the request-body builder, which maps `ImageGenParams` onto the `/images`
- *     body USING those capabilities — dropping a `resolution` the model has no
+ *     body USING those capabilities, dropping a `resolution` the model has no
  *     parameter for, refusing a `background:"transparent"` the model can't do
  *     BEFORE anything is billed, and explaining each such decision;
  *  3. the error explainer, which turns OpenRouter's HTTP status + JSON error body
@@ -124,7 +124,7 @@ export interface BuiltImageRequest {
   body: Record<string, unknown>;
   /** Human-readable notes on what was dropped/adjusted and why (surfaced in the tool result). */
   warnings: string[];
-  /** True when an exact `size` (pixels) was sent — the caller may retry without it. */
+  /** True when an exact `size` (pixels) was sent; the caller may retry without it. */
   exactSize: boolean;
 }
 
@@ -150,7 +150,7 @@ function acceptedSuffix(ctx: BodyCtx, key: string): string {
   return v ? ` Accepted: ${v.join(', ')}.` : '';
 }
 
-/** `aspect_ratio` — refused when the model advertises an enum that lacks it. */
+/** `aspect_ratio`: refused when the model advertises an enum that lacks it. */
 function mapAspectRatio(ctx: BodyCtx, aspectRatio: string): void {
   const ratios = enumValues(ctx.caps, 'aspect_ratio');
   if (ratios && !ratios.includes(aspectRatio)) {
@@ -159,7 +159,7 @@ function mapAspectRatio(ctx: BodyCtx, aspectRatio: string): void {
   ctx.body['aspect_ratio'] = aspectRatio;
 }
 
-/** `resolution` tier — dropped (with a note) when the model has no such parameter at all. */
+/** `resolution` tier: dropped (with a note) when the model has no such parameter at all. */
 function mapResolution(ctx: BodyCtx, resolution: string): void {
   if (!supportsParam(ctx.caps, 'resolution')) {
     ctx.warnings.push(
@@ -178,7 +178,7 @@ function mapResolution(ctx: BodyCtx, resolution: string): void {
  * Size: exact pixels (`size`, authoritative) OR aspect_ratio + resolution tier.
  * `size` and a mismatched `resolution`/`aspect_ratio` together are rejected with
  * a 400, so an exact size replaces both. Some providers enforce a MINIMUM pixel
- * budget (gpt-image rejected 256x256) — the gateway retries without `size` on that.
+ * budget (gpt-image rejected 256x256); the gateway retries without `size` on that.
  */
 function mapSize(ctx: BodyCtx, params: ImageGenParams, exactSize: boolean, sizeRejected: boolean): void {
   if (exactSize) {
@@ -196,7 +196,7 @@ const GENERIC_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', 
 
 /**
  * After the provider refused our exact `size`, keep the SHAPE that was asked for: the
- * supported ratio nearest to width/height — not the configured default aspect (a rejected
+ * supported ratio nearest to width/height, not the configured default aspect (a rejected
  * 640×384 used to come back as a 1024² square although 16:9/3:2 was supported).
  */
 function shapeOfRejectedSize(ctx: BodyCtx, params: ImageGenParams): string | null | undefined {
@@ -227,7 +227,7 @@ function mapQuality(ctx: BodyCtx, quality: string): void {
   ctx.body['quality'] = quality;
 }
 
-/** `transparent` was asked of a model that cannot do it natively — fail before billing. */
+/** `transparent` was asked of a model that cannot do it natively; fail before billing. */
 function transparentRefusal(ctx: BodyCtx, modes: string[] | null): Error {
   if (!modes) {
     return new Error(
@@ -242,7 +242,7 @@ function transparentRefusal(ctx: BodyCtx, modes: string[] | null): Error {
 }
 
 /**
- * `background` — the /images enum is only auto|transparent|opaque (per model: gpt-image-2.x =
+ * `background`: the /images enum is only auto|transparent|opaque (per model: gpt-image-2.x =
  * auto|opaque). A specific colour rides in the compiled prompt constraint and maps to `opaque`;
  * a hex here would 400. `transparent` on a model without it is refused BEFORE the request.
  */
@@ -252,7 +252,7 @@ function mapBackground(ctx: BodyCtx, background: string): void {
   const modes = enumValues(ctx.caps, 'background');
   if (ctx.caps && !modes && !supportsParam(ctx.caps, 'background')) {
     if (want === 'transparent') throw transparentRefusal(ctx, null);
-    ctx.warnings.push(`${ctx.model} has no \`background\` parameter — "${want}" was carried in the prompt only.`);
+    ctx.warnings.push(`${ctx.model} has no \`background\` parameter, so "${want}" was carried in the prompt only.`);
     return;
   }
   if (modes && !modes.includes(want)) {
@@ -278,7 +278,7 @@ function mapReferences(ctx: BodyCtx, references: NonNullable<ImageGenParams['ref
  * advertised capabilities. Throws a plain, actionable Error (BEFORE any request
  * is made, so nothing is billed) for a value the model demonstrably can't take.
  * With unknown capabilities (`caps` null) it is optimistic and sends what it
- * always did — the provider then validates.
+ * always did; the provider then validates.
  */
 export function buildOpenRouterImageBody(
   params: ImageGenParams,
@@ -353,17 +353,17 @@ const STATUS_TEXT: Record<number, string> = {
 };
 
 const STATUS_HINTS: Record<number, string[]> = {
-  401: ['Check the OpenRouter key in your token file (`openrouter token.txt` by default) — it may be revoked or mistyped. Keys: https://openrouter.ai/settings/keys'],
+  401: ['Check the OpenRouter key in your token file (`openrouter token.txt` by default): it may be revoked or mistyped. Keys: https://openrouter.ai/settings/keys'],
   402: ['Top up OpenRouter credits (https://openrouter.ai/settings/credits) or raise the key\'s spending limit; image generation is billed per output image/token.'],
   403: ['A guardrail or moderation rule blocked the request — soften the prompt, or check guardrails/privacy settings: https://openrouter.ai/settings/privacy'],
-  404: ['Verify the model id (list: https://openrouter.ai/api/v1/images/models). A data-policy/"Ignored Providers" mismatch also shows as 404 — see https://openrouter.ai/settings/privacy'],
-  408: ['Transient — retry; use `wait:false` (async job) so a slow generation cannot trip a client timeout.'],
-  413: ['Shrink or drop the reference images (fewer/smaller files) — the request body exceeded the size limit.'],
-  429: ['You are being rate limited — wait for the `Retry-After` period (honoured automatically once) and retry, or spread requests out.'],
+  404: ['Verify the model id (list: https://openrouter.ai/api/v1/images/models). A data-policy/"Ignored Providers" mismatch also shows as 404, see https://openrouter.ai/settings/privacy'],
+  408: ['Transient: retry; use `wait:false` (async job) so a slow generation cannot trip a client timeout.'],
+  413: ['Shrink or drop the reference images (fewer/smaller files), because the request body exceeded the size limit.'],
+  429: ['You are being rate limited: wait for the `Retry-After` period (honoured automatically once) and retry, or spread requests out.'],
   500: ['OpenRouter masked the upstream message (500); retry, and if it persists check https://status.openrouter.ai'],
   502: ['The provider failed or returned an invalid/empty result (a safety-blocked generation also surfaces as 502). Failed generations are not billed — rephrase and retry, or try another model.'],
-  503: ['No provider currently matches your routing constraints — check "Ignored Providers"/provider preferences (https://openrouter.ai/settings/preferences) or retry shortly.'],
-  504: ['The upstream provider timed out — retry, or lower `quality`/size for a faster render.'],
+  503: ['No provider currently matches your routing constraints: check "Ignored Providers"/provider preferences (https://openrouter.ai/settings/preferences) or retry shortly.'],
+  504: ['The upstream provider timed out: retry, or lower `quality`/size for a faster render.'],
 };
 
 /** Canonical `error_type` → short label (docs: "Typed Error Codes"). */
@@ -445,7 +445,7 @@ const DETERMINISTIC_ERROR_TYPES = new Set([
 ]);
 
 /**
- * True when a failure body says retrying the same request cannot help — a
+ * True when a failure body says retrying the same request cannot help: a
  * moderation flag (`metadata.reasons`) or a deterministic `error_type`. A 502
  * safety block is the case that matters: it looks like a transient 5xx.
  */
@@ -509,7 +509,7 @@ function moderationHint(meta: OpenRouterErrorBody['metadata']): string | null {
   );
 }
 
-/** "HTTP 502 — <status meaning> — <error_type>: <label>" (parts omitted when unknown). */
+/** "HTTP 502, <status meaning>, <error_type>: <label>" (parts omitted when unknown). */
 function errorHeadline(code: number | undefined, errorType: string | undefined): string {
   const typeLabel = errorType ? ERROR_TYPE_LABEL[errorType] : undefined;
   return [code != null ? `HTTP ${code}` : null, code != null ? STATUS_TEXT[code] ?? null : null, typeLabel ? `${errorType}: ${typeLabel}` : errorType ?? null]

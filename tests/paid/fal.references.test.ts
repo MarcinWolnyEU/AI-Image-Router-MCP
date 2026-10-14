@@ -3,7 +3,7 @@
  *
  * Krea 2 is the only wired fal image family whose text-to-image endpoint accepts image
  * conditioning, via `image_style_references[]` whose item shape is `{ image_url, strength? }`
- * (NOT `{ url }` — a bug we fixed). This drives the real FalGateway.generateImage with a
+ * (NOT `{ url }`, a bug we fixed). This drives the real FalGateway.generateImage with a
  * reference on BOTH Krea sizes and asserts the request body uses the correct `image_url` key
  * and that generation succeeds.
  *

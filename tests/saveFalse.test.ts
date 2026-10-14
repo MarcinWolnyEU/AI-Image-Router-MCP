@@ -1,5 +1,5 @@
 /**
- * `save:false` means "write nothing" — for the two paths that ignored it: building an
+ * `save:false` means "write nothing"; pinned here for the two paths that ignored it: building an
  * `.ico` with `transform_media` (always wrote the icon) and `image_to_video`
  * `output_format:"gif"` (always wrote the GIF, plus `z-download-` copies of remote frames).
  * Real tools over an in-memory MCP transport; remote frames from a local node:http server.
