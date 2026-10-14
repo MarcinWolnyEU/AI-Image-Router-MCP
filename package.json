@@ -71,19 +71,19 @@
   "homepage": "https://github.com/MarcinWolnyEU/ai-image-router-mcp#readme",
   "dependencies": {
     "@fiahfy/ico": "^0.0.5",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "gifenc": "^1.0.3",
     "onnx-proto": "^8.0.1",
-    "onnxruntime-node": "^1.26.0",
+    "onnxruntime-node": "^1.30.0",
     "prompts": "^2.4.2",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@os-eco/trellis-cli": "github:jayminwest/trellis#5dc94429e704c9907a0ad87f59a3f162c151133f",
     "@types/node": "^20.19.0",
     "@types/prompts": "^2.4.9",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3"
   }
 }
