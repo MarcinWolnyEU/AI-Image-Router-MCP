@@ -26,7 +26,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["20", "22"]
+        # 20.7.0 is the declared floor (Node 20.6.0's runner skips top-level node:test hooks; see AGENTS.md); 22 is the current LTS.
+        node: ["20.7.0", "22"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

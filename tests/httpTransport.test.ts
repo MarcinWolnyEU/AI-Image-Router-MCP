@@ -182,3 +182,17 @@ describe('session expiry', () => {
     assert.equal(r.status, 404);
   });
 });
+
+describe('protocol version negotiation', () => {
+  // Real 2025-era clients (Le Chat, Claude Desktop, Cursor) still send 2024-11-05 / 2025-03-26.
+  for (const pv of ['2024-10-07', '2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']) {
+    it(`negotiates the requested protocol version ${pv}`, async () => {
+      const r = await send({ chunks: json({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: pv, capabilities: {}, clientInfo: { name: 't', version: '1' } } }) });
+      assert.equal(r.status, 200, r.body);
+      const msg = rpc(r);
+      assert.equal(msg.error, undefined, r.body);
+      assert.equal(msg.result?.protocolVersion, pv);
+      assert.ok(r.headers['mcp-session-id'], 'the initialize reply carries a session id');
+    });
+  }
+});

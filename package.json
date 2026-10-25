@@ -5,7 +5,7 @@
   "description": "MCP server for images and short video: generation across OpenRouter, Mistral, Eden AI and fal.ai, plus local background removal, GIF assembly, ICO/icon sets, cropping and conversion.",
   "type": "module",
   "engines": {
-    "node": ">=20.6"
+    "node": ">=20.7"
   },
   "main": "dist/index.js",
   "bin": {
