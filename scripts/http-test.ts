@@ -1,6 +1,5 @@
 /** Validate the Streamable HTTP transport (and the shutdown tool). */
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 function textOf(content: unknown): string {
   if (!Array.isArray(content)) return '';

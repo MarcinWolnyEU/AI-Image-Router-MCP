@@ -20,7 +20,7 @@ interface SchemaContext {
  * reload that switches gateway/model never leaves the client validating against the old
  * model's enums. The model itself comes from config, not from the tool input.
  */
-export function buildGenerateImageSchema(): InputSchema {
+export function buildGenerateImageSchema(): z.ZodObject<InputSchema> {
   const ctx: SchemaContext = {
     gw: runtime.gateway,
     gatewayId: runtime.config.gateway,
@@ -42,7 +42,7 @@ export function buildGenerateImageSchema(): InputSchema {
   addConstraintFields(inputSchema, ctx);
   addIcoSquaringFields(inputSchema);
   addToolOptionFields(inputSchema);
-  return inputSchema;
+  return z.object(inputSchema);
 }
 
 /** Aspect ratio: only when the model exposes it as a parameter. */

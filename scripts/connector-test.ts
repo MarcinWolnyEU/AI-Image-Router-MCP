@@ -9,8 +9,7 @@
  * advertises the always-on tools. No generation, no cost.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const args = process.argv.slice(2);
 const url = new URL(args.find((a) => !a.startsWith('--')) ?? 'http://127.0.0.1:8765/mcp');

@@ -20,6 +20,7 @@ config.local.json
 
 # Scratch / working notes (never committed)
 .temp/
+.pi/
 
 # OS / editor
 .DS_Store

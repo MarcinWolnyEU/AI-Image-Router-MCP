@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CONFIGURE_COMMAND } from '../config/paths.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { resolveImageInput, resolveReferenceImages } from '../util/inputs.js';
 import { mediaStem, writeMediaFile } from '../util/files.js';
@@ -42,31 +42,31 @@ export function registerImageToVideo(server: McpServer): void {
     {
       title: 'Image to video / animated GIF',
       description: imageToVideoDescription(),
-      inputSchema: {
-        image: z.string().min(1).optional().describe('Primary / first-frame image (file path, http(s) URL, data: URL, or base64). Required for mp4; for gif it is the first frame.'),
-        images_inner: z.array(z.string()).optional().describe('GIF only: ordered middle frames placed between `image` and `image_last`.'),
-        image_last: z.string().optional().describe('End-frame image. For mp4: end frame for first+last-frame models. For gif: the last frame.'),
-        last_frame: z.string().optional().describe('Deprecated alias for `image_last`.'),
-        output_format: z.enum(['mp4', 'gif']).optional().describe('"mp4" (default) = AI image-to-video via the configured model; "gif" = local animated-GIF assembly of the supplied frames.'),
-        prompt: z.string().optional().describe('mp4 only: motion/scene description to guide the animation. Optional here, but some models require one (e.g. HeyGen, Hailuo) and fail without it.'),
-        reference_images: z.array(z.string()).optional().describe('mp4 only: additional reference/subject images (for multi-reference models).'),
-        model: z.string().optional().describe(`mp4 only: override the configured image-to-video model. ${MODEL_OVERRIDE_DEFAULTS_NOTE}`),
-        resolution: z.string().optional().describe('mp4 only: override the default resolution (e.g. "720p", "1080P").'),
-        fps: fpsSchema.optional().describe('Frames per second. A single number applies to all frames. For gif you may pass an ARRAY (one fps per frame; length must equal the frame count) for per-frame timing: each frame shows for 1000/fps ms (GIF granularity is 10 ms).'),
-        duration: z.number().optional().describe('mp4 only: override the default duration in seconds.'),
-        aspect_ratio: z.string().optional().describe(`mp4 only: ${VIDEO_ASPECT_RATIO_DESCRIPTION}`),
-        provider_options: z.record(z.string(), z.any()).optional().describe('mp4 only: raw gateway-specific request fields (e.g. a model-native end-frame field, seed, camera commands), merged into the request.'),
-        loop: z.number().int().min(-1).optional().describe('gif only: loop count (0 = forever, default; -1 = play once; >0 = number of loops).'),
-        max_colors: z.number().int().min(2).max(256).optional().describe('gif only: palette ceiling 2–256 (default 256). With palette optimization on, caps the search; with it off, the fixed palette size.'),
-        optimize_palette: z.boolean().optional().describe('gif only: search palette sizes for the best quality/size knee (default true). Turn off to encode at `max_colors` directly.'),
-        fit: z.enum(['cover', 'contain', 'fill']).optional().describe('gif only: how frames are fitted to the canvas when sizes differ (default "cover").'),
-        width: z.number().int().min(1).optional().describe('gif only: output canvas width in pixels (default: first frame width).'),
-        height: z.number().int().min(1).optional().describe('gif only: output canvas height in pixels (default: first frame height).'),
-        save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
-        ...videoJobSchemaFields({ mp4Only: true }),
-      },
+      inputSchema: z.object({
+              image: z.string().min(1).optional().describe('Primary / first-frame image (file path, http(s) URL, data: URL, or base64). Required for mp4; for gif it is the first frame.'),
+              images_inner: z.array(z.string()).optional().describe('GIF only: ordered middle frames placed between `image` and `image_last`.'),
+              image_last: z.string().optional().describe('End-frame image. For mp4: end frame for first+last-frame models. For gif: the last frame.'),
+              last_frame: z.string().optional().describe('Deprecated alias for `image_last`.'),
+              output_format: z.enum(['mp4', 'gif']).optional().describe('"mp4" (default) = AI image-to-video via the configured model; "gif" = local animated-GIF assembly of the supplied frames.'),
+              prompt: z.string().optional().describe('mp4 only: motion/scene description to guide the animation. Optional here, but some models require one (e.g. HeyGen, Hailuo) and fail without it.'),
+              reference_images: z.array(z.string()).optional().describe('mp4 only: additional reference/subject images (for multi-reference models).'),
+              model: z.string().optional().describe(`mp4 only: override the configured image-to-video model. ${MODEL_OVERRIDE_DEFAULTS_NOTE}`),
+              resolution: z.string().optional().describe('mp4 only: override the default resolution (e.g. "720p", "1080P").'),
+              fps: fpsSchema.optional().describe('Frames per second. A single number applies to all frames. For gif you may pass an ARRAY (one fps per frame; length must equal the frame count) for per-frame timing: each frame shows for 1000/fps ms (GIF granularity is 10 ms).'),
+              duration: z.number().optional().describe('mp4 only: override the default duration in seconds.'),
+              aspect_ratio: z.string().optional().describe(`mp4 only: ${VIDEO_ASPECT_RATIO_DESCRIPTION}`),
+              provider_options: z.record(z.string(), z.any()).optional().describe('mp4 only: raw gateway-specific request fields (e.g. a model-native end-frame field, seed, camera commands), merged into the request.'),
+              loop: z.number().int().min(-1).optional().describe('gif only: loop count (0 = forever, default; -1 = play once; >0 = number of loops).'),
+              max_colors: z.number().int().min(2).max(256).optional().describe('gif only: palette ceiling 2–256 (default 256). With palette optimization on, caps the search; with it off, the fixed palette size.'),
+              optimize_palette: z.boolean().optional().describe('gif only: search palette sizes for the best quality/size knee (default true). Turn off to encode at `max_colors` directly.'),
+              fit: z.enum(['cover', 'contain', 'fill']).optional().describe('gif only: how frames are fitted to the canvas when sizes differ (default "cover").'),
+              width: z.number().int().min(1).optional().describe('gif only: output canvas width in pixels (default: first frame width).'),
+              height: z.number().int().min(1).optional().describe('gif only: output canvas height in pixels (default: first frame height).'),
+              save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
+              ...videoJobSchemaFields({ mp4Only: true }),
+            }),
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       // Poll mode first; it works for mp4 jobs (gif is always local/synchronous).
       const jobId = (args.job_id as string | undefined)?.trim();
       if (jobId) {
@@ -76,7 +76,7 @@ export function registerImageToVideo(server: McpServer): void {
       if (outputFormat === 'gif') {
         return handleGif(args);
       }
-      return handleVideo(args, extra);
+      return handleVideo(args, ctx.mcpReq.signal);
     },
   );
   refreshOnReload(server, tool, () => ({ description: imageToVideoDescription() }));
@@ -200,9 +200,9 @@ async function renderGifResult(result: GifEncodeResult, output: { outputMode: Ou
 // ---------------------------------------------------------------------------
 
 /** AI image-to-video via the configured gateway: `output_format: "mp4"`. */
-async function handleVideo(args: VideoArgs, extra: { signal: AbortSignal }): Promise<ToolResult> {
+async function handleVideo(args: VideoArgs, signal: AbortSignal): Promise<ToolResult> {
   try {
-    const plan = await planImageToVideo(args, extra.signal);
+    const plan = await planImageToVideo(args, signal);
     return plan.ok ? await runVideoGeneration(plan.value) : plan.result;
   } catch (err) {
     return videoFailureResult('image_to_video', err, args.model ?? runtime.config.imageToVideo.model ?? '');

@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import type { ImageGenResult } from '../gateways/types.js';
 import type { ImageJobMediaOpts } from '../state/generationJobs.js';
@@ -24,7 +24,7 @@ export function registerGenerateImage(server: McpServer): void {
         'Models that support reference images accept `reference_images` (local paths / URLs / data-URLs).',
       inputSchema: buildGenerateImageSchema(),
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       const a = args as Record<string, unknown>;
       // Phase timing: localize where a slow/timed-out call spends its time
       // (reference resolution vs. the gateway HTTP call vs. tinify post-proc).
@@ -37,15 +37,15 @@ export function registerGenerateImage(server: McpServer): void {
           return await pollJob(jobId);
         }
 
-        const prepared = await prepareImageRequest(a, extra.signal, phases);
+        const prepared = await prepareImageRequest(a, ctx.mcpReq.signal, phases);
         if (!prepared.ok) return prepared.result;
         const request = prepared.value;
 
         return request.waitForResult
-          ? await generateAndRender(request, extra.signal, phases, t0)
+          ? await generateAndRender(request, ctx.mcpReq.signal, phases, t0)
           : submitBackgroundJob(request);
       } catch (err) {
-        return await failureResult(err, t0, phases, extra.signal);
+        return await failureResult(err, t0, phases, ctx.mcpReq.signal);
       }
     },
   );

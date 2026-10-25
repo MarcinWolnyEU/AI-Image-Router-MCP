@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CONFIGURE_COMMAND } from '../config/paths.js';
-import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer, RegisteredTool } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { resolveOutputOptions, stepFail, stepOk, type Step, type ToolResult } from './helpers.js';
 import {
@@ -83,26 +83,26 @@ export function registerGenerateVideo(server: McpServer): RegisteredTool {
       description:
         'Generate a short video from a text prompt using the configured text-to-video model. ' +
         'Long-running (often a few minutes). The video is saved to the output directory and the path is returned.',
-      inputSchema: {
-        // Optional in the schema so a `{job_id}`-only poll validates; required at runtime otherwise.
-        prompt: z.string().optional().describe('Text prompt describing the video to generate (required unless `job_id` is given).'),
-        model: z.string().optional().describe(`Override the configured text-to-video model. ${MODEL_OVERRIDE_DEFAULTS_NOTE}`),
-        resolution: z.string().optional().describe('Override the default resolution (e.g. "720p", "1080p").'),
-        fps: z.number().int().positive().optional().describe('Override the default frames-per-second.'),
-        duration: z.number().optional().describe('Override the default duration in seconds.'),
-        aspect_ratio: z.string().optional().describe(VIDEO_ASPECT_RATIO_DESCRIPTION),
-        provider_options: z.record(z.string(), z.any()).optional().describe('Raw gateway-specific fields (e.g. generate_audio for Veo, camera commands for MiniMax).'),
-        save: z.boolean().optional().describe('Save the video to the output directory (default true).'),
-        ...videoJobSchemaFields({ mp4Only: false }),
-      },
+      inputSchema: z.object({
+              // Optional in the schema so a `{job_id}`-only poll validates; required at runtime otherwise.
+              prompt: z.string().optional().describe('Text prompt describing the video to generate (required unless `job_id` is given).'),
+              model: z.string().optional().describe(`Override the configured text-to-video model. ${MODEL_OVERRIDE_DEFAULTS_NOTE}`),
+              resolution: z.string().optional().describe('Override the default resolution (e.g. "720p", "1080p").'),
+              fps: z.number().int().positive().optional().describe('Override the default frames-per-second.'),
+              duration: z.number().optional().describe('Override the default duration in seconds.'),
+              aspect_ratio: z.string().optional().describe(VIDEO_ASPECT_RATIO_DESCRIPTION),
+              provider_options: z.record(z.string(), z.any()).optional().describe('Raw gateway-specific fields (e.g. generate_audio for Veo, camera commands for MiniMax).'),
+              save: z.boolean().optional().describe('Save the video to the output directory (default true).'),
+              ...videoJobSchemaFields({ mp4Only: false }),
+            }),
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       const jobId = (args.job_id as string | undefined)?.trim();
       if (jobId) {
         return pollVideoJob(jobId, 'text-to-video', 'text-to-video', 'generate_video');
       }
       try {
-        const plan = planTextToVideo(args, extra.signal);
+        const plan = planTextToVideo(args, ctx.mcpReq.signal);
         return plan.ok ? await runVideoGeneration(plan.value) : plan.result;
       } catch (err) {
         return videoFailureResult('generate_video', err, args.model ?? runtime.config.textToVideo.model ?? '');

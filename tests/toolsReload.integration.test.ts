@@ -18,9 +18,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import sharp from 'sharp';
 import type { Gateway, ImageGenParams, ImageGenResult } from '../src/gateways/types.js';
 
@@ -65,7 +63,7 @@ before(async () => {
   const server = buildServer();
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: 'reload-test', version: '1.0.0' });
-  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/tools/list_changed', () => {
     listChanged += 1;
   });
   await server.connect(serverT);

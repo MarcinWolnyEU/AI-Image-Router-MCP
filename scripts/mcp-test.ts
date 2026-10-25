@@ -5,8 +5,8 @@
  */
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { findProjectRoot } from './root.mjs';
 
 // Project root (from this script's location, not cwd) for the server subprocess + output dir.

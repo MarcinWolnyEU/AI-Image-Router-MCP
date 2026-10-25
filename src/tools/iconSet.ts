@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { inputStem, resolveMediaInput } from '../util/inputs.js';
 import { convertImage, formatMime, type ImageFormat } from '../media/convert.js';
@@ -312,56 +312,56 @@ export function registerBuildIconSet(server: McpServer): void {
         'belonging to the same declared set. Non-square sources are fitted whole onto a square canvas by default (`square_fit:"pad"`), ' +
         'so an off-centre subject is never silently cropped. The reply lists each entry with its size AND the source it came from, ' +
         'and the operation fails loudly rather than emitting a set that differs from the one you declared.',
-      inputSchema: {
-        image: z
-          .string()
-          .min(1)
-          .describe('The master image every size is derived from (file path, http(s) URL, data: URL, or base64).'),
-        sizes: z
-          .array(z.number().int().min(1))
-          .min(1)
-          .describe(
-            'The declared set: every square size to produce, in pixels (e.g. [256,128,64,48,32,24,16]). Duplicates are rejected. ' +
-              'When `ico` is on (default) each must be an allowed ICO size (' +
-              ICO_ALLOWED_SIZES.join(', ') +
-              '). Sources are only ever downscaled: a size larger than the source is an error, never an upscale.',
-          ),
-        variants: z
-          .array(
-            z.object({
-              image: z.string().min(1).describe('Alternative source (file path, http(s) URL, data: URL, or base64).'),
-              sizes: z.array(z.number().int().min(1)).min(1).describe('Which of the declared `sizes` come from this source instead of the master.'),
+      inputSchema: z.object({
+              image: z
+                .string()
+                .min(1)
+                .describe('The master image every size is derived from (file path, http(s) URL, data: URL, or base64).'),
+              sizes: z
+                .array(z.number().int().min(1))
+                .min(1)
+                .describe(
+                  'The declared set: every square size to produce, in pixels (e.g. [256,128,64,48,32,24,16]). Duplicates are rejected. ' +
+                    'When `ico` is on (default) each must be an allowed ICO size (' +
+                    ICO_ALLOWED_SIZES.join(', ') +
+                    '). Sources are only ever downscaled: a size larger than the source is an error, never an upscale.',
+                ),
+              variants: z
+                .array(
+                  z.object({
+                    image: z.string().min(1).describe('Alternative source (file path, http(s) URL, data: URL, or base64).'),
+                    sizes: z.array(z.number().int().min(1)).min(1).describe('Which of the declared `sizes` come from this source instead of the master.'),
+                  }),
+                )
+                .optional()
+                .describe(
+                  'Point specific sizes at a different source than the master, e.g. a simplified mark for 16/24/32 while the ' +
+                    'large sizes come from the detailed master. Every size listed here must also appear in `sizes`, and no size may ' +
+                    'be claimed twice.',
+                ),
+              square_fit: z
+                .enum(['pad', 'crop'])
+                .optional()
+                .describe(
+                  'How a non-square source becomes square. "pad" (default) fits the whole image onto a square canvas, so nothing is ' +
+                    'cropped; "crop" center-crops it, which loses anything off-centre. The reply always states which was used.',
+                ),
+              pad_color: z.string().optional().describe('Padding colour for `square_fit:"pad"`: "transparent" (default) or a hex like "#ffffff".'),
+              output_format: z
+                .enum(IMAGE_FORMATS)
+                .optional()
+                .describe('Format for the per-size image files (default "png"). Encoded locally with sharp; no Tinify calls, no cost.'),
+              ico: z.boolean().optional().describe('Also assemble the multi-size Windows icon from the set (default true).'),
+              name: z.string().optional().describe('Base name for the output files (default: derived from the master input, else "icon").'),
+              save: z.boolean().optional().describe('Save the results to the output directory (default true).'),
+              inline_preview: z.boolean().optional().describe('Return an inline preview of the assembled icon (default from config).'),
+              output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
             }),
-          )
-          .optional()
-          .describe(
-            'Point specific sizes at a different source than the master, e.g. a simplified mark for 16/24/32 while the ' +
-              'large sizes come from the detailed master. Every size listed here must also appear in `sizes`, and no size may ' +
-              'be claimed twice.',
-          ),
-        square_fit: z
-          .enum(['pad', 'crop'])
-          .optional()
-          .describe(
-            'How a non-square source becomes square. "pad" (default) fits the whole image onto a square canvas, so nothing is ' +
-              'cropped; "crop" center-crops it, which loses anything off-centre. The reply always states which was used.',
-          ),
-        pad_color: z.string().optional().describe('Padding colour for `square_fit:"pad"`: "transparent" (default) or a hex like "#ffffff".'),
-        output_format: z
-          .enum(IMAGE_FORMATS)
-          .optional()
-          .describe('Format for the per-size image files (default "png"). Encoded locally with sharp; no Tinify calls, no cost.'),
-        ico: z.boolean().optional().describe('Also assemble the multi-size Windows icon from the set (default true).'),
-        name: z.string().optional().describe('Base name for the output files (default: derived from the master input, else "icon").'),
-        save: z.boolean().optional().describe('Save the results to the output directory (default true).'),
-        inline_preview: z.boolean().optional().describe('Return an inline preview of the assembled icon (default from config).'),
-        output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
-      },
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       try {
         const request = iconSetRequest(args);
-        return await failuresAsErrorResult(() => buildIconSet(request, extra.signal));
+        return await failuresAsErrorResult(() => buildIconSet(request, ctx.mcpReq.signal));
       } catch (err) {
         runtime.health.recordError('build_icon_set', (err as Error).message);
         return errorResult(describeError(err));

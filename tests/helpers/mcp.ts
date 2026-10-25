@@ -12,8 +12,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { runtime } from '../../src/state/runtime.js';
 import { buildServer } from '../../src/server.js';
 import { configSchema, type AppConfig, type GatewayId } from '../../src/config/schema.js';

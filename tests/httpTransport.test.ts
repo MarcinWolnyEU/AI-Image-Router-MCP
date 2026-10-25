@@ -14,7 +14,7 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request, type Server } from 'node:http';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from "@modelcontextprotocol/server";
 import { createHttpApp, type HttpApp } from '../src/http/app.js';
 
 const logger = { info() {}, warn() {}, error() {} };
@@ -27,7 +27,7 @@ let clock = 0;
 
 function buildServer(): McpServer {
   const s = new McpServer({ name: 'http-test', version: '1.0.0' });
-  s.registerTool('echo', { inputSchema: { text: z.string() } }, async ({ text }) => ({ content: [{ type: 'text', text }] }));
+  s.registerTool('echo', { inputSchema: z.object({ text: z.string() }) }, async ({ text }) => ({ content: [{ type: 'text', text }] }));
   return s;
 }
 

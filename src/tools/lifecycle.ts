@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { GATEWAY_LABELS } from '../config/schema.js';
 import { BG_MODELS, plannedProviders, requiredFreeMB, type BgExecutionProvider, type BgModelKey, type EpUsage } from '../bgremoval/models.js';
@@ -235,7 +235,7 @@ export function registerLifecycleTools(server: McpServer): void {
       description:
         'Report detailed server health: active gateway, configured models/options, the execution provider for background removal, ' +
         'logging/output settings, any errors or missing entries recorded by the config wizard, and recent runtime errors. No secrets are returned.',
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     async (): Promise<ToolResult> => textResult(await renderHealth()),
   );
@@ -249,7 +249,7 @@ export function registerLifecycleTools(server: McpServer): void {
         'background-removal session and error state. The MCP connection stays alive. Use after editing the configuration. ' +
         'All-or-nothing: if the new configuration cannot be applied, the previous one stays fully active and the error is reported; ' +
         'on success the tool list and option schemas are refreshed for the new gateway/model.',
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     async (): Promise<ToolResult> => {
       const res = await runtime.reload();
@@ -264,10 +264,10 @@ export function registerLifecycleTools(server: McpServer): void {
       description:
         'Gracefully shut the server down: flush logs and exit the process. The MCP client will need to relaunch the server ' +
         '(or call this only when you intend to stop it).',
-      inputSchema: {
-        reason: z.string().optional().describe('Optional reason recorded in the logs.'),
-        delay_ms: z.number().int().min(0).max(10_000).optional().describe('Delay before exit so this response can flush (default 300ms).'),
-      },
+      inputSchema: z.object({
+              reason: z.string().optional().describe('Optional reason recorded in the logs.'),
+              delay_ms: z.number().int().min(0).max(10_000).optional().describe('Delay before exit so this response can flush (default 300ms).'),
+            }),
     },
     async (args): Promise<ToolResult> => {
       const reason = args.reason ?? 'shutdown tool invoked';

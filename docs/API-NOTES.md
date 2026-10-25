@@ -30,7 +30,7 @@ this file when a gateway changes its API.
     "input_references": [{ "type": "image_url", "image_url": { "url": "<data: or http url>" } }]
   }
   ```
-- Optional headers: `HTTP-Referer`, `X-Title` (attribution).
+- Optional headers: `HTTP-Referer: https://github.com/MarcinWolnyEU/AI-Image-Router-MCP`, `X-Title: ai-image-router-mcp` (attribution; the URL is the project repo).
 - `aspect_ratio`: `1:1`(def),`2:3`,`3:2`,`3:4`,`4:3`,`4:5`,`5:4`,`9:16`,`16:9`,`21:9` (+extended `1:4`,`4:1`,`1:8`,`8:1`,`1:2`,`2:1`,`9:21`,`21:9`,`auto`). Providers clamp to their subset.
 - `resolution`: `512`(def),`1K`,`2K`,`4K`. `size` is a convenience shorthand (`"2K"` or `"2048x2048"`).
 - `output_format`: `png`(def),`jpeg`,`webp`,`svg`; `quality`: `auto`,`low`,`medium`,`high`; `background`: `auto`,`transparent`,`opaque`; `seed`; `n` (1–10).
@@ -271,16 +271,26 @@ API (no type defs shipped; typed locally; **load via `createRequire(import.meta.
 - **Transparency** is 1-bit: binarize source alpha at a threshold (default 128); `transparentIndex` = the palette entry with `a===0`; set `transparent:true`.
 - **Palette knee** (`media/gif.ts`): quantize a shared global palette across all frames at each power-of-two size, score with **decode-free SSIM** (`util/ssim.ts`, luma over mid-gray; reconstruct from palette+index since LZW is lossless), dedupe identical encodings, pick the max-gain elbow above the (bytes,SSIM) chord.
 
-## MCP TypeScript SDK (`@modelcontextprotocol/sdk` v1.29.0)
+## MCP SDK (`@modelcontextprotocol/*` v2, split packages)
 
-- ESM; imports need `.js`: `@modelcontextprotocol/sdk/server/mcp.js` (`McpServer`), `.../server/stdio.js` (`StdioServerTransport`), `.../server/streamableHttp.js` (`StreamableHTTPServerTransport`), `.../types.js` (`isInitializeRequest`, `McpError`).
+v2 replaced the monolithic v1 `@modelcontextprotocol/sdk` with four packages (all 2.x, Node ≥ 20):
+
+- `@modelcontextprotocol/server` — `McpServer`, `RegisteredTool`, `StandardSchemaWithJSON`, `isInitializeRequest`, protocol types. Also `server/stdio` (`StdioServerTransport`, `serveStdio`).
+- `@modelcontextprotocol/core` — protocol schemas/constants (transitive dependency).
+- `@modelcontextprotocol/client` — `Client`, `InMemoryTransport`, `StreamableHTTPClientTransport`; `client/stdio` (`StdioClientTransport`).
+- `@modelcontextprotocol/node` — the Node HTTP adapter: `NodeStreamableHTTPServerTransport`, `toNodeHandler`, host/origin validators.
+
+**v2 requires Zod 4** (`zod ^4.2.0`); the repo's long-standing `^3.25` invariant was retired for this migration. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner defaults (Zod 3 filled them); config defaults use `.prefault({})`.
+
+- ESM; imports need no `.js` extension: `@modelcontextprotocol/server`, `@modelcontextprotocol/server/stdio`, `@modelcontextprotocol/node`, `@modelcontextprotocol/client`.
 - `server.registerTool(name, { title, description, inputSchema, outputSchema?, annotations? }, handler)`.
-  - `inputSchema` is a **Zod raw shape** (`{ field: z.string() }`), NOT `z.object(...)`.
+  - `inputSchema` MUST be a **Standard Schema object** — `z.object({ field: z.string() })`. A raw Zod shape (`{ field: z.string() }`) or a plain JSON Schema object is rejected at registration in v2.
   - Handler returns `{ content: [...], isError?, structuredContent? }`. With `outputSchema`, MUST return `structuredContent`.
   - Content items: `{type:'text',text}`, `{type:'image',data:<b64>,mimeType}`, `{type:'resource_link',uri:'file:///abs',name,mimeType,description}`, `{type:'resource',resource:{uri,mimeType,text|blob}}`.
-- Errors: return `{ isError:true, content:[{type:'text',text}] }` for model-visible failures; `throw new McpError(code,msg)` for protocol errors.
-- **stdio: never write to stdout** except protocol; log to stderr.
-- HTTP: stateful pattern keeps a `mcp-session-id → transport` map; `POST/GET/DELETE /mcp` all call `transport.handleRequest(req,res,body?)`; build a fresh `McpServer` per session.
+- **Handler context** (v2): `(args, ctx)` where `ctx = { sessionId?, mcpReq: { id, method, _meta?, signal, log, elicitInput, requestSampling, send, notify, requestState }, http?: { req?, authInfo? } }`. v1's flat `extra.requestId` → `ctx.mcpReq.id`; `extra.signal` → `ctx.mcpReq.signal`. `instrumentToolLogging` reads both shapes so direct-call tests keep working.
+- Errors: return `{ isError:true, content:[{type:'text',text}] }` for model-visible failures (`errorResult` in `src/tools/helpers.ts`); protocol-level errors use the SDK's `SdkError`/`ProtocolError` family (v1's `McpError`).
+- **stdio: never write to stdout** except protocol; log to stderr. `StdioServerTransport` closes itself on stdin EOF.
+- HTTP: stateful pattern keeps a `mcp-session-id → transport` map; `POST/GET/DELETE /mcp` all call `transport.handleRequest(req,res,body?)`; build a fresh `McpServer` per session. v2 also ships `createMcpHandler`/`serveStdio`, which own the 2025-era-vs-2026-envelope "era decision"; this repo keeps its hand-wired transport so the DNS-rebinding guard, bearer auth, and idle sweep stay in `src/http/app.ts`. A hand-wired `McpServer` + transport serves 2025-era protocol (`initialize` binds the instance legacy); v2's client negotiates `2025-11-25`.
 - `registerTool` returns a `RegisteredTool` with `update({ paramsSchema?, description?, enabled?, … })`, `enable()`, `disable()`. Each sends `notifications/tools/list_changed` when connected; a **disabled** tool is hidden from `tools/list` and its calls are rejected. We use this (`tools/reloadable.ts` `refreshOnReload`) to re-derive config-dependent schemas and gated tools after `restart`; the subscription is dropped via `server.server.onclose`.
 
 ## MCP clients over HTTP/stdio: Le Chat & Mistral Vibe (verified 2026-10-01)
