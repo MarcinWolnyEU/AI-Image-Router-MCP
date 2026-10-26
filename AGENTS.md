@@ -226,7 +226,8 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
   new test file runs only after you add it to one of them.
 - **Node ≥ 20.7** is the floor, not 20.6: the integration suites rely on top-level (root-context) `before`/`after`
   hooks in `node:test`, and Node 20.6.0's runner silently skips them (the product itself works on 20.6.0 — only
-  the test setup no-ops). 20.7.0 and later run the full suite. CI tests the floor plus the current LTS.
+  the test setup no-ops). 20.7.0 and later run the full suite. CI tests the floor (20.7.0), the current LTS (24)
+  and the current release line (26).
 - Use `tests/helpers/mcp.ts` (`startMcpHarness`: fake gateway + real server over an in-memory client) instead
   of hand-rolling client/server setup.
 - Async is the default, so a test or harness that needs a blocking result passes `wait:true` (or sets
