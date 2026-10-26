@@ -1,14 +1,22 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { sanitizeForLog } from './sanitize.js';
 import { normalizeResultForClients } from '../tools/helpers.js';
 
-/** The request/session ids of an MCP call, when the SDK supplied them. */
+/**
+ * The request/session ids of an MCP call, when the server supplied them. v2's handler
+ * context is `{ sessionId?, mcpReq: { id, method, … }, http? }` — the JSON-RPC id moved
+ * from a flat `requestId` to `mcpReq.id` — so read both shapes (v1 callers still pass the
+ * flat one).
+ */
 function requestContext(extra: unknown): Record<string, unknown> {
   const e = (extra ?? {}) as Record<string, unknown>;
+  const req = (e['mcpReq'] ?? {}) as Record<string, unknown>;
   const ctx: Record<string, unknown> = {};
-  if (e['requestId'] !== undefined) ctx['requestId'] = e['requestId'];
-  if (e['sessionId'] !== undefined) ctx['sessionId'] = e['sessionId'];
+  const requestId = req['id'] ?? e['requestId'];
+  const sessionId = e['sessionId'] ?? req['sessionId'];
+  if (requestId !== undefined) ctx['requestId'] = requestId;
+  if (sessionId !== undefined) ctx['sessionId'] = sessionId;
   return ctx;
 }
 

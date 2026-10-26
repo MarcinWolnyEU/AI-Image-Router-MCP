@@ -48,7 +48,7 @@ The job is submitted in the background; the agent polls it with the returned `jo
 
 ## Quickstart
 
-You need Node.js 20.6 or newer and an API token from at least one gateway: [OpenRouter](https://openrouter.ai/), [Mistral](https://mistral.ai/), [Eden AI](https://www.edenai.co/) or [fal.ai](https://fal.ai/). The wizard accepts a token file, an environment variable or a pasted value.
+You need Node.js 20.7 or newer and an API token from at least one gateway: [OpenRouter](https://openrouter.ai/), [Mistral](https://mistral.ai/), [Eden AI](https://www.edenai.co/) or [fal.ai](https://fal.ai/). The wizard accepts a token file, an environment variable or a pasted value.
 
 **1. Run the setup wizard once.** It asks for the gateway, your token and a model, and writes `~/.ai-image-router-mcp/config.json`:
 
@@ -295,7 +295,7 @@ To report a vulnerability, use a [private security advisory](https://github.com/
 
 ## Development
 
-You need Node.js 20.6 or newer.
+You need Node.js 20.7 or newer.
 
 ```bash
 git clone https://github.com/MarcinWolnyEU/ai-image-router-mcp.git

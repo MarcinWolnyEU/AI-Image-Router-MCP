@@ -1,4 +1,5 @@
-import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from "@modelcontextprotocol/server";
+import type { RegisteredTool } from "@modelcontextprotocol/server";
 import { runtime } from './state/runtime.js';
 import { instrumentToolLogging } from './logging/toolLogging.js';
 import { registerGenerateImage } from './tools/generateImage.js';

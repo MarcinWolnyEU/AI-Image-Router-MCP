@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { isInitializeRequest } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { checkRequestOrigin, isHttpRequestAuthorized } from '../util/httpAuth.js';
 
 type Log = { info(msg: string, meta?: Record<string, unknown>): void; warn(msg: string, meta?: Record<string, unknown>): void; error(msg: string, meta?: Record<string, unknown>): void };
@@ -25,7 +25,7 @@ export interface HttpAppOptions {
 }
 
 interface Session {
-  transport: StreamableHTTPServerTransport;
+  transport: NodeStreamableHTTPServerTransport;
   server: McpServer;
   lastSeen: number;
   /** Open GET (SSE) streams: a listening client is alive even without new requests. */
@@ -158,7 +158,7 @@ export function createHttpApp(opts: HttpAppOptions): HttpApp {
   /** A new session: a fresh server + transport, registered once the transport assigns its id. */
   const startSession = async (req: IncomingMessage, res: ServerResponse, body: unknown): Promise<void> => {
     const server = opts.buildServer();
-    const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+    const transport: NodeStreamableHTTPServerTransport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (sid) => {
         sessions.set(sid, { transport, server, lastSeen: now(), openStreams: 0 });

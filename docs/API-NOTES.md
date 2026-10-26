@@ -15,6 +15,10 @@ this file when a gateway changes its API.
 > `idempotent: true` (only Mistral agent creation does). Gateway-level fallbacks (OpenRouter `/videos` core-only,
 > fal core-only (on a submit `422` only, never a submit `5xx`), and the OpenRouter image single 5xx retry) are explicit and documented per gateway below.
 
+> **Local dependency versions (Node 20.7.0 floor):** `zod ^4.6.7`, `onnxruntime-node ^1.30.0`, `sharp ^0.34.5`, `tsx ^4.23.15`.
+> `sharp` is held at 0.34.x: 0.35.x declares `engines.node >=20.9.0`, which would break the 20.7.0 floor. The rest are on
+> their latest releases and their engine ranges admit 20.7.0.
+
 ---
 
 ## OpenRouter: `https://openrouter.ai/api/v1`
@@ -30,7 +34,7 @@ this file when a gateway changes its API.
     "input_references": [{ "type": "image_url", "image_url": { "url": "<data: or http url>" } }]
   }
   ```
-- Optional headers: `HTTP-Referer`, `X-Title` (attribution).
+- Optional headers: `HTTP-Referer: https://github.com/MarcinWolnyEU/AI-Image-Router-MCP`, `X-Title: ai-image-router-mcp` (attribution; the URL is the project repo).
 - `aspect_ratio`: `1:1`(def),`2:3`,`3:2`,`3:4`,`4:3`,`4:5`,`5:4`,`9:16`,`16:9`,`21:9` (+extended `1:4`,`4:1`,`1:8`,`8:1`,`1:2`,`2:1`,`9:21`,`21:9`,`auto`). Providers clamp to their subset.
 - `resolution`: `512`(def),`1K`,`2K`,`4K`. `size` is a convenience shorthand (`"2K"` or `"2048x2048"`).
 - `output_format`: `png`(def),`jpeg`,`webp`,`svg`; `quality`: `auto`,`low`,`medium`,`high`; `background`: `auto`,`transparent`,`opaque`; `seed`; `n` (1–10).
@@ -225,12 +229,12 @@ BiRefNet/bria are ~930–977 MB fp32; **BRIA RMBG-2.0 is itself BiRefNet-archite
 - Optional mitigations, **off by default for every model** (env-overridable per run): flip TTA (`BG_TTA`, averages the raw outputs before postprocess, ~2× inference), then after the min-max stretch a hysteresis cleanup (`BG_HYST_SEED`) and an alpha black-point lift (`BG_ALPHA_FLOOR`).
 - ONNX node names: read `inputNames[0]`/`outputNames[0]` at runtime, don't hard-code. Spatial dims are static 1024×1024.
 
-### Execution providers (onnxruntime-node 1.26.0): **the BiRefNet family leaves the CPU only via WebGPU + a cascaded graph**
+### Execution providers (onnxruntime-node 1.30.0): **the BiRefNet family leaves the CPU only via WebGPU + a cascaded graph**
 - `InferenceSession.create(path, { executionProviders: [accel, 'cpu'] })`.
 - Valid EP strings: `'cpu'`, `'cuda'`, `'dml'`, `'coreml'`, `'webgpu'`.
 - **Bundled per platform:** DirectML (`'dml'`) on Windows x64/arm64; CUDA (`'cuda'`) on **Linux x64 only** (CUDA 12.x + cuDNN 9.x); CoreML (`'coreml'`) on macOS. A provider the platform lacks is **not offered by the wizard and replaced by CPU up front** (`providerAvailable` in `plannedProviders`). `cuda`/`coreml` on Windows used to be "accepted", reported as the active EP by the reply and `health_status`, and silently run on CPU (2026-10-04 review).
 - `auto` (`resolveExecutionProvider`, the one resolution shared by the runtime, the wizard and `health_status`): win→`webgpu`, mac→`coreml`, linux-x64→`cuda`, else→`cpu`. `plannedProviders` then drops a provider the platform lacks or the model is known not to run on (`usage[ep].runs === false`) and always appends `'cpu'`; `create()` is wrapped in try/catch → retry `['cpu']`; the active EP is logged. **Note `create()` succeeding does NOT mean the model runs**: these failures happen at `session.run()`, which the create try/catch does not catch.
-- **GPU compatibility (empirical: Win 11, RTX 5070 Ti 16 GB, ort-node 1.26):**
+- **GPU compatibility (empirical: Win 11, RTX 5070 Ti 16 GB, measured on ort-node 1.26.0; dependency now pinned at 1.30.0, GPU behaviour not re-measured):**
   - **BiRefNet (general/massive) + bria-rmbg fail on every GPU provider** regardless of free VRAM: DirectML errors `E_OUTOFMEMORY` on the deformable-conv ASPP / fused nodes (an op bug, *not* real VRAM exhaustion; it fails with 14 GB free); WebGPU errors `Too many storage buffers in shader. Current: 17, Max is 16` at a decoder `Split`. → CPU, unless the cascaded graph below is used on WebGPU (the runtime generates it automatically on first WebGPU use: `cascadeForWebgpu` in the catalog).
   - **`isnet-general-use` runs on all providers.** WebGPU ≈2.5 s, CPU ≈2.7 s, DirectML works but the **first call is ~6 min** (kernel compilation). VRAM ≈1.3 GB.
   - **`ben2-base` runs on all providers as-is** (no cascade). Measured 2026-10-14 (one 1024² pass, flip TTA off): CPU ≈11 s/pass; DirectML ≈0.35–0.65 s/pass after a ≈4 s session load; WebGPU ≈0.5 s/pass after a ≈6 s first call (shader compile). Its output is float16 (see "Run" above).
@@ -271,16 +275,26 @@ API (no type defs shipped; typed locally; **load via `createRequire(import.meta.
 - **Transparency** is 1-bit: binarize source alpha at a threshold (default 128); `transparentIndex` = the palette entry with `a===0`; set `transparent:true`.
 - **Palette knee** (`media/gif.ts`): quantize a shared global palette across all frames at each power-of-two size, score with **decode-free SSIM** (`util/ssim.ts`, luma over mid-gray; reconstruct from palette+index since LZW is lossless), dedupe identical encodings, pick the max-gain elbow above the (bytes,SSIM) chord.
 
-## MCP TypeScript SDK (`@modelcontextprotocol/sdk` v1.29.0)
+## MCP SDK (`@modelcontextprotocol/*` v2, split packages)
 
-- ESM; imports need `.js`: `@modelcontextprotocol/sdk/server/mcp.js` (`McpServer`), `.../server/stdio.js` (`StdioServerTransport`), `.../server/streamableHttp.js` (`StreamableHTTPServerTransport`), `.../types.js` (`isInitializeRequest`, `McpError`).
+v2 replaced the monolithic v1 `@modelcontextprotocol/sdk` with four packages (all 2.x, Node ≥ 20):
+
+- `@modelcontextprotocol/server` — `McpServer`, `RegisteredTool`, `StandardSchemaWithJSON`, `isInitializeRequest`, protocol types. Also `server/stdio` (`StdioServerTransport`, `serveStdio`).
+- `@modelcontextprotocol/core` — protocol schemas/constants (transitive dependency).
+- `@modelcontextprotocol/client` — `Client`, `InMemoryTransport`, `StreamableHTTPClientTransport`; `client/stdio` (`StdioClientTransport`).
+- `@modelcontextprotocol/node` — the Node HTTP adapter: `NodeStreamableHTTPServerTransport`, `toNodeHandler`, host/origin validators.
+
+**v2 requires Zod 4** (`zod ^4.6.7`; the MCP packages' own floor is `^4.2.0`); the repo's long-standing `^3.25` invariant was retired for this migration. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner defaults (Zod 3 filled them); config defaults use `.prefault({})`.
+
+- ESM; imports need no `.js` extension: `@modelcontextprotocol/server`, `@modelcontextprotocol/server/stdio`, `@modelcontextprotocol/node`, `@modelcontextprotocol/client`.
 - `server.registerTool(name, { title, description, inputSchema, outputSchema?, annotations? }, handler)`.
-  - `inputSchema` is a **Zod raw shape** (`{ field: z.string() }`), NOT `z.object(...)`.
+  - `inputSchema` MUST be a **Standard Schema object** — `z.object({ field: z.string() })`. A raw Zod shape (`{ field: z.string() }`) or a plain JSON Schema object is rejected at registration in v2.
   - Handler returns `{ content: [...], isError?, structuredContent? }`. With `outputSchema`, MUST return `structuredContent`.
   - Content items: `{type:'text',text}`, `{type:'image',data:<b64>,mimeType}`, `{type:'resource_link',uri:'file:///abs',name,mimeType,description}`, `{type:'resource',resource:{uri,mimeType,text|blob}}`.
-- Errors: return `{ isError:true, content:[{type:'text',text}] }` for model-visible failures; `throw new McpError(code,msg)` for protocol errors.
-- **stdio: never write to stdout** except protocol; log to stderr.
-- HTTP: stateful pattern keeps a `mcp-session-id → transport` map; `POST/GET/DELETE /mcp` all call `transport.handleRequest(req,res,body?)`; build a fresh `McpServer` per session.
+- **Handler context** (v2): `(args, ctx)` where `ctx = { sessionId?, mcpReq: { id, method, _meta?, signal, log, elicitInput, requestSampling, send, notify, requestState }, http?: { req?, authInfo? } }`. v1's flat `extra.requestId` → `ctx.mcpReq.id`; `extra.signal` → `ctx.mcpReq.signal`. `instrumentToolLogging` reads both shapes so direct-call tests keep working.
+- Errors: return `{ isError:true, content:[{type:'text',text}] }` for model-visible failures (`errorResult` in `src/tools/helpers.ts`); protocol-level errors use the SDK's `SdkError`/`ProtocolError` family (v1's `McpError`).
+- **stdio: never write to stdout** except protocol; log to stderr. `StdioServerTransport` closes itself on stdin EOF.
+- HTTP: stateful pattern keeps a `mcp-session-id → transport` map; `POST/GET/DELETE /mcp` all call `transport.handleRequest(req,res,body?)`; build a fresh `McpServer` per session. v2 also ships `createMcpHandler`/`serveStdio`, which own the 2025-era-vs-2026-envelope "era decision"; this repo keeps its hand-wired transport so the DNS-rebinding guard, bearer auth, and idle sweep stay in `src/http/app.ts`. A hand-wired `McpServer` + transport serves 2025-era protocol (`initialize` binds the instance legacy); v2's client negotiates `2025-11-25`.
 - `registerTool` returns a `RegisteredTool` with `update({ paramsSchema?, description?, enabled?, … })`, `enable()`, `disable()`. Each sends `notifications/tools/list_changed` when connected; a **disabled** tool is hidden from `tools/list` and its calls are rejected. We use this (`tools/reloadable.ts` `refreshOnReload`) to re-derive config-dependent schemas and gated tools after `restart`; the subscription is dropped via `server.server.onclose`.
 
 ## MCP clients over HTTP/stdio: Le Chat & Mistral Vibe (verified 2026-10-01)

@@ -4,8 +4,8 @@ Guidance for working **on** this codebase. User-facing install/usage: `README.md
 `docs/TOOLS.md`. Every external HTTP contract (gateways, Tinify, BiRefNet recipe, ONNX providers, MCP SDK,
 clients): `docs/API-NOTES.md`; read it **before** editing a gateway/media client or debugging an API call.
 
-`ai-image-router-mcp` is an ESM, strict-TypeScript **MCP server** (official `@modelcontextprotocol/sdk`,
-Node ≥ 20.6). It routes image generation, image-to-video and text-to-video across four gateways (OpenRouter,
+`ai-image-router-mcp` is an ESM, strict-TypeScript **MCP server** (the official v2 split packages
+`@modelcontextprotocol/server` + `/client` + `/node`, Node ≥ 20.7). It routes image generation, image-to-video and text-to-video across four gateways (OpenRouter,
 Mistral, Eden AI, fal.ai) and does local media work: background removal (ONNX), animated GIF, ICO/icon sets,
 crop/resize/convert (sharp, ffmpeg, optional Tinify).
 
@@ -73,7 +73,9 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
 
 - **Direct REST only; never add a vendor SDK** (no OpenRouter/Mistral/Eden/fal/Tinify packages). This is an
   explicit user requirement. Auth is hand-rolled from the token files.
-- **zod stays on `^3.25`** for SDK compatibility. Do not bump to v4.
+- **zod is `^4.6.7`**: the v2 MCP packages require Zod 4 (their floor is `zod ^4.2.0`), so the old `^3.25`
+  invariant is retired. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner
+  defaults (Zod 3 did fill them); config defaults use `.prefault({})` to keep the fill-in behavior.
 - **Never write to stdout** except MCP protocol frames. Log through `runtime.logger` (stderr).
 - `onnx-proto` loads only through the dynamic `import('./cascade.js')` in `birefnet.ts` (first WebGPU use of
   a BiRefNet model). Never import `cascade.js` statically: it would load on every startup.
@@ -222,6 +224,10 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
 
 - `npm test` runs `unit` then `integration:nonpayment`. Both are **explicit file lists in `package.json`**: a
   new test file runs only after you add it to one of them.
+- **Node ≥ 20.7** is the floor, not 20.6: the integration suites rely on top-level (root-context) `before`/`after`
+  hooks in `node:test`, and Node 20.6.0's runner silently skips them (the product itself works on 20.6.0 — only
+  the test setup no-ops). 20.7.0 and later run the full suite. CI tests the floor (20.7.0), the current LTS (24)
+  and the current release line (26).
 - Use `tests/helpers/mcp.ts` (`startMcpHarness`: fake gateway + real server over an in-memory client) instead
   of hand-rolling client/server setup.
 - Async is the default, so a test or harness that needs a blocking result passes `wait:true` (or sets

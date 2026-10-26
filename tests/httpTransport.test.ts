@@ -14,7 +14,7 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request, type Server } from 'node:http';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from "@modelcontextprotocol/server";
 import { createHttpApp, type HttpApp } from '../src/http/app.js';
 
 const logger = { info() {}, warn() {}, error() {} };
@@ -27,7 +27,7 @@ let clock = 0;
 
 function buildServer(): McpServer {
   const s = new McpServer({ name: 'http-test', version: '1.0.0' });
-  s.registerTool('echo', { inputSchema: { text: z.string() } }, async ({ text }) => ({ content: [{ type: 'text', text }] }));
+  s.registerTool('echo', { inputSchema: z.object({ text: z.string() }) }, async ({ text }) => ({ content: [{ type: 'text', text }] }));
   return s;
 }
 
@@ -181,4 +181,18 @@ describe('session expiry', () => {
     const r = await send({ headers: { 'mcp-session-id': sid }, chunks: json({ jsonrpc: '2.0', id: 5, method: 'tools/list' }) });
     assert.equal(r.status, 404);
   });
+});
+
+describe('protocol version negotiation', () => {
+  // Real 2025-era clients (Le Chat, Claude Desktop, Cursor) still send 2024-11-05 / 2025-03-26.
+  for (const pv of ['2024-10-07', '2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']) {
+    it(`negotiates the requested protocol version ${pv}`, async () => {
+      const r = await send({ chunks: json({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: pv, capabilities: {}, clientInfo: { name: 't', version: '1' } } }) });
+      assert.equal(r.status, 200, r.body);
+      const msg = rpc(r);
+      assert.equal(msg.error, undefined, r.body);
+      assert.equal(msg.result?.protocolVersion, pv);
+      assert.ok(r.headers['mcp-session-id'], 'the initialize reply carries a session id');
+    });
+  }
 });

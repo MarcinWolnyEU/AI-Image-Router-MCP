@@ -92,7 +92,7 @@ const diagnosticsObject = z.object({
         count: z.number(),
       }),
     )
-    .default({}),
+    .prefault({}),
 });
 export type Diagnostics = z.infer<typeof diagnosticsObject>;
 
@@ -108,13 +108,13 @@ export const configSchema = z.object({
       inlinePreview: z.boolean().default(true),
       previewMaxBytes: z.number().default(1_500_000),
     })
-    .default({}),
+    .prefault({}),
   logging: z
     .object({
       policy: z.enum(['none', 'today', 'persistent-daily']).default('today'),
       dir: z.string().default('logs'),
     })
-    .default({}),
+    .prefault({}),
   http: z
     .object({
       enabled: z.boolean().default(false),
@@ -136,7 +136,7 @@ export const configSchema = z.object({
       /** Close an HTTP session after this long without a request (an open SSE stream keeps it alive). */
       sessionIdleMinutes: z.number().int().min(1).default(30),
     })
-    .default({}),
+    .prefault({}),
   /** fal.ai-specific options. */
   fal: z
     .object({
@@ -147,20 +147,20 @@ export const configSchema = z.object({
        */
       relaxSafety: z.boolean().default(false),
     })
-    .default({}),
-  image: imageObject.default({}),
-  imageToVideo: i2vObject.default({}),
-  textToVideo: videoObject.default({}),
+    .prefault({}),
+  image: imageObject.prefault({}),
+  imageToVideo: i2vObject.prefault({}),
+  textToVideo: videoObject.prefault({}),
   backgroundRemoval: z
     .object({
       model: z.enum(['none', 'birefnet-general', 'birefnet-massive', 'bria-rmbg', 'isnet-general-use', 'ben2-base', 'finegrain-box-segmenter']).default('birefnet-general'),
       executionProvider: z.enum(['auto', 'dml', 'cuda', 'coreml', 'cpu', 'webgpu']).default('auto'),
       modelsDir: z.string().default('models'),
     })
-    .default({}),
+    .prefault({}),
   /** Optional Tinify (TinyPNG) key, when set, generate_image can compress PNGs and output WebP. */
   tinify: z.object({ token: tokenSourceSchema }).nullable().default(null),
-  diagnostics: diagnosticsObject.default({}),
+  diagnostics: diagnosticsObject.prefault({}),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

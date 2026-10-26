@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { inputStem, resolveMediaInput, type ResolvedMedia } from '../util/inputs.js';
 import { cropImage, downsizeImage, frameBlackFraction } from '../media/imageEdit.js';
@@ -553,18 +553,18 @@ export function registerMediaEditTools(server: McpServer): void {
       description:
         'Crop an exact pixel region from an image or video. Input may be a file path, http(s) URL, data: URL, or base64. ' +
         'The region is left/top (top-left corner) plus width/height, in pixels, and must lie within the source bounds.',
-      inputSchema: {
-        image: z.string().min(1).describe('The image or video to crop (file path, http(s) URL, data: URL, or base64).'),
-        left: pixelInt(0, 'X of the crop region’s top-left corner, in pixels.'),
-        top: pixelInt(0, 'Y of the crop region’s top-left corner, in pixels.'),
-        width: pixelInt(1, 'Crop width in pixels.'),
-        height: pixelInt(1, 'Crop height in pixels.'),
-        save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
-        inline_preview: z.boolean().optional().describe('Return an inline preview for images (default from config).'),
-        output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
-      },
+      inputSchema: z.object({
+              image: z.string().min(1).describe('The image or video to crop (file path, http(s) URL, data: URL, or base64).'),
+              left: pixelInt(0, 'X of the crop region’s top-left corner, in pixels.'),
+              top: pixelInt(0, 'Y of the crop region’s top-left corner, in pixels.'),
+              width: pixelInt(1, 'Crop width in pixels.'),
+              height: pixelInt(1, 'Crop height in pixels.'),
+              save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
+              inline_preview: z.boolean().optional().describe('Return an inline preview for images (default from config).'),
+              output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
+            }),
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       try {
         const media = await resolveMediaInput(args.image);
         const region = { left: args.left, top: args.top, width: args.width, height: args.height };
@@ -575,7 +575,7 @@ export function registerMediaEditTools(server: McpServer): void {
           const edited = await cropImage(imageInputOf(media), region);
           return await emitImage(edited.bytes, edited.mimeType, 'crop', { save, inline, outputMode, description: 'crop (image)' });
         }
-        return await videoResult('crop', outputMode, (outPath) => cropVideo(media, outPath, region, extra.signal));
+        return await videoResult('crop', outputMode, (outPath) => cropVideo(media, outPath, region, ctx.mcpReq.signal));
       } catch (err) {
         runtime.health.recordError('crop_media', (err as Error).message);
         return errorResult(describeError(err));
@@ -594,31 +594,31 @@ export function registerMediaEditTools(server: McpServer): void {
         'With `width`/`height` it downsizes (Magic Kernel Sharp 2021 for images, ffmpeg for video), only ever shrinking. ' +
         'For a VIDEO input, an image `output_format` extracts a representative still frame (skips mostly-black frames). ' +
         'Requesting a video `output_format` for an image returns an error pointing at `image_to_video`.',
-      inputSchema: {
-        image: z
-          .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
-          .describe('The image(s)/video or .ico to transform. Pass a single value, or an array when batching (each processed independently) or building a multi-size ICO. For `ico`, each entry must be a square, allowed ICO size (' + ICO_ALLOWED_SIZES.join(', ') + '), and you may include existing .ico files to merge. Each entry is a file path, http(s) URL, data: URL, or base64.'),
-        width: z.number().int().min(1).optional().describe('Maximum width in pixels (downsize; only ever shrinks). Ignored when output_format is ico.'),
-        height: z.number().int().min(1).optional().describe('Maximum height in pixels (downsize; only ever shrinks). Ignored when output_format is ico.'),
-        output_format: z
-          .enum(['png', 'jpg', 'webp', 'avif', 'ico', 'mp4'])
-          .optional()
-          .describe('Target format. Image formats (png/jpg/webp/avif) convert an image, or extract+convert a still from a video. "ico" builds a multi-size Windows icon from the image array: each image must already be a square allowed ICO size (' + ICO_ALLOWED_SIZES.join(', ') + '), existing .ico files are merged, and duplicate sizes are rejected (no resizing; use generate_image to downscale a single large image to a chosen width). "mp4" on a VIDEO input converts it to an H.264/AAC mp4 (webm/mov/mkv/avi → mp4; an mp4 passes through unchanged); on an image input it is rejected (use image_to_video).'),
-        sizes: z
-          .array(z.number().int().min(1))
-          .optional()
-          .describe(
-            'The set of sizes the `.ico` is DECLARED to contain (only with `output_format:"ico"`). The emitted icon must equal ' +
-              'this set exactly or the call fails and writes nothing. Pass one size per input and each input must actually be ' +
-              'that size: a file whose real dimensions differ from its declared slot is reported by name instead of being ' +
-              'silently embedded at its real size. Without `sizes` the entries are still listed with their source in the reply.',
-          ),
-        output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
-        save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
-        inline_preview: z.boolean().optional().describe('Return an inline preview for images (default from config). Ignored (always false) for batch operations (an array of non-ico inputs). For ico, shows the largest embedded size.'),
-      },
+      inputSchema: z.object({
+              image: z
+                .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+                .describe('The image(s)/video or .ico to transform. Pass a single value, or an array when batching (each processed independently) or building a multi-size ICO. For `ico`, each entry must be a square, allowed ICO size (' + ICO_ALLOWED_SIZES.join(', ') + '), and you may include existing .ico files to merge. Each entry is a file path, http(s) URL, data: URL, or base64.'),
+              width: z.number().int().min(1).optional().describe('Maximum width in pixels (downsize; only ever shrinks). Ignored when output_format is ico.'),
+              height: z.number().int().min(1).optional().describe('Maximum height in pixels (downsize; only ever shrinks). Ignored when output_format is ico.'),
+              output_format: z
+                .enum(['png', 'jpg', 'webp', 'avif', 'ico', 'mp4'])
+                .optional()
+                .describe('Target format. Image formats (png/jpg/webp/avif) convert an image, or extract+convert a still from a video. "ico" builds a multi-size Windows icon from the image array: each image must already be a square allowed ICO size (' + ICO_ALLOWED_SIZES.join(', ') + '), existing .ico files are merged, and duplicate sizes are rejected (no resizing; use generate_image to downscale a single large image to a chosen width). "mp4" on a VIDEO input converts it to an H.264/AAC mp4 (webm/mov/mkv/avi → mp4; an mp4 passes through unchanged); on an image input it is rejected (use image_to_video).'),
+              sizes: z
+                .array(z.number().int().min(1))
+                .optional()
+                .describe(
+                  'The set of sizes the `.ico` is DECLARED to contain (only with `output_format:"ico"`). The emitted icon must equal ' +
+                    'this set exactly or the call fails and writes nothing. Pass one size per input and each input must actually be ' +
+                    'that size: a file whose real dimensions differ from its declared slot is reported by name instead of being ' +
+                    'silently embedded at its real size. Without `sizes` the entries are still listed with their source in the reply.',
+                ),
+              output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
+              save: z.boolean().optional().describe('Save the result to the output directory (default true).'),
+              inline_preview: z.boolean().optional().describe('Return an inline preview for images (default from config). Ignored (always false) for batch operations (an array of non-ico inputs). For ico, shows the largest embedded size.'),
+            }),
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       try {
         const { outputMode, save, inline, fmt, inputs } = transformSettings(args);
 
@@ -628,14 +628,14 @@ export function registerMediaEditTools(server: McpServer): void {
             outputMode,
             save,
             inline,
-            signal: extra.signal,
+            signal: ctx.mcpReq.signal,
             ...(args.sizes ? { declared: args.sizes as number[] } : {}),
           });
         }
         if (args.sizes) {
           return errorResult('`sizes` declares the entries of an `.ico`; use it with `output_format:"ico"` (or `build_icon_set` to derive sizes).');
         }
-        return await transformInputs(inputs, { width: args.width, height: args.height, fmt, outputMode, save, signal: extra.signal }, inline);
+        return await transformInputs(inputs, { width: args.width, height: args.height, fmt, outputMode, save, signal: ctx.mcpReq.signal }, inline);
       } catch (err) {
         runtime.health.recordError('transform_media', (err as Error).message);
         return errorResult(describeError(err));

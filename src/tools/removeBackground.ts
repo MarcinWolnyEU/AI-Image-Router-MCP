@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CONFIGURE_COMMAND } from '../config/paths.js';
-import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer, RegisteredTool } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { resolveImageInput } from '../util/inputs.js';
 import { getBytes } from '../util/http.js';
@@ -44,20 +44,20 @@ export function registerRemoveBackground(server: McpServer): RegisteredTool {
       description:
         'Remove the background from an image and return a transparent PNG. ' +
         'No gateway/API is used.',
-      inputSchema: {
-        image: z.string().min(1).describe('Image to process: file path, http(s) URL, data: URL, or base64.'),
-        save: z.boolean().optional().describe('Save the resulting PNG to the output directory (default true).'),
-        inline_preview: z.boolean().optional().describe('Return an inline preview to the client (default from config).'),
-        output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
-      },
+      inputSchema: z.object({
+              image: z.string().min(1).describe('Image to process: file path, http(s) URL, data: URL, or base64.'),
+              save: z.boolean().optional().describe('Save the resulting PNG to the output directory (default true).'),
+              inline_preview: z.boolean().optional().describe('Return an inline preview to the client (default from config).'),
+              output_mode: z.enum(['filePath', 'base64']).optional().describe(OUTPUT_MODE_DESCRIPTION),
+            }),
     },
-    async (args, extra): Promise<ToolResult> => {
+    async (args, ctx): Promise<ToolResult> => {
       try {
         if (runtime.config.backgroundRemoval.model === 'none') {
           return errorResult(`Background removal is disabled. Run \`${CONFIGURE_COMMAND}\` and select birefnet-general or birefnet-massive.`);
         }
 
-        const bytes = await loadInputBytes(args.image, extra.signal);
+        const bytes = await loadInputBytes(args.image, ctx.mcpReq.signal);
         if (!bytes) return errorResult('Could not load the input image.');
 
         const remover = await runtime.getRemover();

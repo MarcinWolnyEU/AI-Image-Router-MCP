@@ -167,7 +167,7 @@ export class OpenRouterGateway implements Gateway {
   private headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.token}`,
-      'HTTP-Referer': 'https://github.com/ai-image-router-mcp',
+      'HTTP-Referer': 'https://github.com/MarcinWolnyEU/AI-Image-Router-MCP',
       'X-Title': 'ai-image-router-mcp',
     };
   }

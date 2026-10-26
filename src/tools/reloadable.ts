@@ -1,10 +1,9 @@
-import type { z } from 'zod';
-import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer, RegisteredTool, StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 
 /** The config-dependent parts of a registered tool that a reload can change. */
 export interface ToolRefresh {
-  paramsSchema?: Record<string, z.ZodTypeAny>;
+  paramsSchema?: StandardSchemaWithJSON;
   description?: string;
   enabled?: boolean;
 }
