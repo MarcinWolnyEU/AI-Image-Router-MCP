@@ -73,8 +73,8 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
 
 - **Direct REST only; never add a vendor SDK** (no OpenRouter/Mistral/Eden/fal/Tinify packages). This is an
   explicit user requirement. Auth is hand-rolled from the token files.
-- **zod is `^4.2.0`**: the v2 MCP packages require Zod 4 (`zod ^4.2.0`), so the old `^3.25` invariant is
-  retired. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner
+- **zod is `^4.6.7`**: the v2 MCP packages require Zod 4 (their floor is `zod ^4.2.0`), so the old `^3.25`
+  invariant is retired. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner
   defaults (Zod 3 did fill them); config defaults use `.prefault({})` to keep the fill-in behavior.
 - **Never write to stdout** except MCP protocol frames. Log through `runtime.logger` (stderr).
 - `onnx-proto` loads only through the dynamic `import('./cascade.js')` in `birefnet.ts` (first WebGPU use of

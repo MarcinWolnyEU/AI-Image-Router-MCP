@@ -15,6 +15,10 @@ this file when a gateway changes its API.
 > `idempotent: true` (only Mistral agent creation does). Gateway-level fallbacks (OpenRouter `/videos` core-only,
 > fal core-only (on a submit `422` only, never a submit `5xx`), and the OpenRouter image single 5xx retry) are explicit and documented per gateway below.
 
+> **Local dependency versions (Node 20.7.0 floor):** `zod ^4.6.7`, `onnxruntime-node ^1.30.0`, `sharp ^0.34.5`, `tsx ^4.23.15`.
+> `sharp` is held at 0.34.x: 0.35.x declares `engines.node >=20.9.0`, which would break the 20.7.0 floor. The rest are on
+> their latest releases and their engine ranges admit 20.7.0.
+
 ---
 
 ## OpenRouter: `https://openrouter.ai/api/v1`
@@ -225,12 +229,12 @@ BiRefNet/bria are ~930–977 MB fp32; **BRIA RMBG-2.0 is itself BiRefNet-archite
 - Optional mitigations, **off by default for every model** (env-overridable per run): flip TTA (`BG_TTA`, averages the raw outputs before postprocess, ~2× inference), then after the min-max stretch a hysteresis cleanup (`BG_HYST_SEED`) and an alpha black-point lift (`BG_ALPHA_FLOOR`).
 - ONNX node names: read `inputNames[0]`/`outputNames[0]` at runtime, don't hard-code. Spatial dims are static 1024×1024.
 
-### Execution providers (onnxruntime-node 1.26.0): **the BiRefNet family leaves the CPU only via WebGPU + a cascaded graph**
+### Execution providers (onnxruntime-node 1.30.0): **the BiRefNet family leaves the CPU only via WebGPU + a cascaded graph**
 - `InferenceSession.create(path, { executionProviders: [accel, 'cpu'] })`.
 - Valid EP strings: `'cpu'`, `'cuda'`, `'dml'`, `'coreml'`, `'webgpu'`.
 - **Bundled per platform:** DirectML (`'dml'`) on Windows x64/arm64; CUDA (`'cuda'`) on **Linux x64 only** (CUDA 12.x + cuDNN 9.x); CoreML (`'coreml'`) on macOS. A provider the platform lacks is **not offered by the wizard and replaced by CPU up front** (`providerAvailable` in `plannedProviders`). `cuda`/`coreml` on Windows used to be "accepted", reported as the active EP by the reply and `health_status`, and silently run on CPU (2026-10-04 review).
 - `auto` (`resolveExecutionProvider`, the one resolution shared by the runtime, the wizard and `health_status`): win→`webgpu`, mac→`coreml`, linux-x64→`cuda`, else→`cpu`. `plannedProviders` then drops a provider the platform lacks or the model is known not to run on (`usage[ep].runs === false`) and always appends `'cpu'`; `create()` is wrapped in try/catch → retry `['cpu']`; the active EP is logged. **Note `create()` succeeding does NOT mean the model runs**: these failures happen at `session.run()`, which the create try/catch does not catch.
-- **GPU compatibility (empirical: Win 11, RTX 5070 Ti 16 GB, ort-node 1.26):**
+- **GPU compatibility (empirical: Win 11, RTX 5070 Ti 16 GB, measured on ort-node 1.26.0; dependency now pinned at 1.30.0, GPU behaviour not re-measured):**
   - **BiRefNet (general/massive) + bria-rmbg fail on every GPU provider** regardless of free VRAM: DirectML errors `E_OUTOFMEMORY` on the deformable-conv ASPP / fused nodes (an op bug, *not* real VRAM exhaustion; it fails with 14 GB free); WebGPU errors `Too many storage buffers in shader. Current: 17, Max is 16` at a decoder `Split`. → CPU, unless the cascaded graph below is used on WebGPU (the runtime generates it automatically on first WebGPU use: `cascadeForWebgpu` in the catalog).
   - **`isnet-general-use` runs on all providers.** WebGPU ≈2.5 s, CPU ≈2.7 s, DirectML works but the **first call is ~6 min** (kernel compilation). VRAM ≈1.3 GB.
   - **`ben2-base` runs on all providers as-is** (no cascade). Measured 2026-10-14 (one 1024² pass, flip TTA off): CPU ≈11 s/pass; DirectML ≈0.35–0.65 s/pass after a ≈4 s session load; WebGPU ≈0.5 s/pass after a ≈6 s first call (shader compile). Its output is float16 (see "Run" above).
@@ -280,7 +284,7 @@ v2 replaced the monolithic v1 `@modelcontextprotocol/sdk` with four packages (al
 - `@modelcontextprotocol/client` — `Client`, `InMemoryTransport`, `StreamableHTTPClientTransport`; `client/stdio` (`StdioClientTransport`).
 - `@modelcontextprotocol/node` — the Node HTTP adapter: `NodeStreamableHTTPServerTransport`, `toNodeHandler`, host/origin validators.
 
-**v2 requires Zod 4** (`zod ^4.2.0`); the repo's long-standing `^3.25` invariant was retired for this migration. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner defaults (Zod 3 filled them); config defaults use `.prefault({})`.
+**v2 requires Zod 4** (`zod ^4.6.7`; the MCP packages' own floor is `^4.2.0`); the repo's long-standing `^3.25` invariant was retired for this migration. Zod 4 gotcha: `.default({})` on an object returns `{}` verbatim instead of filling inner defaults (Zod 3 filled them); config defaults use `.prefault({})`.
 
 - ESM; imports need no `.js` extension: `@modelcontextprotocol/server`, `@modelcontextprotocol/server/stdio`, `@modelcontextprotocol/node`, `@modelcontextprotocol/client`.
 - `server.registerTool(name, { title, description, inputSchema, outputSchema?, annotations? }, handler)`.

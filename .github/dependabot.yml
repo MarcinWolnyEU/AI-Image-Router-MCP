@@ -5,16 +5,18 @@ updates:
     schedule: { interval: weekly, day: monday }
     cooldown: { default-days: 7 }
     commit-message: { prefix: build, include: scope }
-    # Node and TypeScript are pinned deliberately: the runtime floor is Node 20.7,
-    # and the MCP v2 packages target TypeScript 5.x. Major bumps (e.g. @types/node 26,
-    # typescript 7) are not applicable to this project.
+    # Ignore only versions that cannot run on the Node 20.7 floor: @types/node 22+
+    # describes Node 22 APIs (newer than the floor) and sharp 0.35+ requires Node
+    # >=20.9.0. TypeScript releases declare Node >=14.17 (5.x/6.x) or >=16.20.0
+    # (7.x), so it stays visible and its major bumps are validated by CI.
     ignore:
-      - dependency-name: "typescript"
       - dependency-name: "@types/node"
+        versions: [">= 22.0.0"]
+      - dependency-name: "sharp"
+        versions: [">= 0.35.0"]
     groups:
       npm-dependencies:
         patterns: ["*"]
-        exclude-patterns: ["typescript", "@types/node"]
         update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
