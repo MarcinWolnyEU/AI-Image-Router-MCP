@@ -1,11 +1,11 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 
 /**
  * Shared-secret auth for the Streamable HTTP transport (`config.http.authToken`).
  * Accepts `Authorization: Bearer <token>` (Le Chat "HTTP Bearer", Vibe `headers`/`api_key_env`)
- * or `X-API-Key: <token>` (Le Chat "API token" with a custom header). Constant-time compare
- * over SHA-256 digests so token length isn't leaked either. `expected` null → auth disabled.
+ * or `X-API-Key: <token>` (Le Chat "API token" with a custom header), compared in constant
+ * time without leaking the token's length (`tokenMatches`). `expected` null → auth disabled.
  * An EMPTY `expected` is a misconfiguration (a token was configured but resolved to
  * nothing) and fails CLOSED: it must never be read as "auth off".
  */
@@ -20,8 +20,23 @@ export function isHttpRequestAuthorized(headers: IncomingHttpHeaders, expected: 
   }
   const apiKey = headers['x-api-key'];
   if (typeof apiKey === 'string') candidates.push(apiKey.trim());
-  const want = digest(expected);
-  return candidates.some((c) => timingSafeEqual(digest(c), want));
+  return candidates.some((c) => tokenMatches(c, expected));
+}
+
+/**
+ * Constant-time equality that also hides the secret's length. `timingSafeEqual` needs equal
+ * lengths, so the candidate is truncated or zero-padded to exactly the secret's byte length:
+ * `Buffer.concat(list, n)` always writes `n` bytes (the copy is clamped, the rest zero-filled),
+ * whatever the candidate's length. The length check runs last, so a prefix of the secret, or
+ * the secret plus trailing bytes, still fails.
+ * No hash: a digest only equalised the lengths, and a fast hash over a credential is what
+ * CodeQL's js/insufficient-password-hash flags. A slow KDF is no fix either: it would hand
+ * every unauthenticated request a CPU lever.
+ */
+function tokenMatches(candidate: string, expected: string): boolean {
+  const want = Buffer.from(expected, 'utf8');
+  const got = Buffer.from(candidate, 'utf8');
+  return timingSafeEqual(Buffer.concat([got], want.length), want) && got.length === want.length;
 }
 
 /** The hostname of a `Host` header value (`example.com:8765`, `[::1]:8765`), lowercased. */
@@ -62,8 +77,4 @@ export function checkRequestOrigin(headers: IncomingHttpHeaders, opts: { authEna
     if (!hostname || !ok(hostname)) return `Origin "${origin}" is not allowed`;
   }
   return null;
-}
-
-function digest(s: string): Buffer {
-  return createHash('sha256').update(s, 'utf8').digest();
 }
