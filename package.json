@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit",
     "trellis": "trellis audit .",
     "list-tools": "tsx scripts/list-tools.ts",
-    "unit": "node --import tsx --test tests/sanitize.test.ts tests/postprocess.test.ts tests/generationJobs.test.ts tests/files.test.ts tests/openrouter.test.ts tests/http.test.ts tests/fal.test.ts tests/mime.test.ts tests/executionProvider.test.ts tests/sysinfo.test.ts tests/sharedHelpers.test.ts tests/eden.test.ts tests/manifests.test.ts tests/paths.test.ts",
+    "unit": "node --import tsx --test tests/sanitize.test.ts tests/postprocess.test.ts tests/generationJobs.test.ts tests/files.test.ts tests/openrouter.test.ts tests/http.test.ts tests/httpAuth.test.ts tests/fal.test.ts tests/mime.test.ts tests/executionProvider.test.ts tests/sysinfo.test.ts tests/sharedHelpers.test.ts tests/eden.test.ts tests/manifests.test.ts tests/paths.test.ts",
     "integration:nonpayment": "node --import tsx --test tests/references.test.ts tests/transform.test.ts tests/gif.test.ts tests/ico.test.ts tests/iconSet.test.ts tests/constraints.test.ts tests/asyncRuntime.test.ts tests/toolsAsync.integration.test.ts tests/imageResult.test.ts tests/toolsReload.integration.test.ts tests/bgPreprocess.test.ts tests/capabilityCache.test.ts tests/modelDownload.test.ts tests/runtimeRemover.test.ts tests/httpTransport.test.ts tests/transformVideo.test.ts tests/saveFalse.test.ts",
     "integration:paid": "node --import tsx --test \"tests/paid/**/*.test.ts\"",
     "test": "npm run unit && npm run integration:nonpayment",
