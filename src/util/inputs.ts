@@ -10,7 +10,11 @@ const REFERENCE_DOWNLOAD_TIMEOUT_MS = 15_000;
 /** Whether an input is an http(s) URL (as opposed to a data: URL, path or base64). */
 const isHttpUrl = (s: string): boolean => /^https?:\/\//i.test(s);
 
-/** Derive a filename for a downloaded reference from its URL + mime type. */
+/**
+ * Derive a filename for a downloaded reference. Only the stem comes from the URL: the extension
+ * always comes from the verified bytes, so a URL can't put active content (`payload.html`, with
+ * an image header in front of it) on disk under its own extension.
+ */
 function downloadFilename(url: string, mimeType: string): string {
   let seg = '';
   try {
@@ -18,9 +22,8 @@ function downloadFilename(url: string, mimeType: string): string {
   } catch {
     /* keep empty */
   }
-  if (!seg) seg = 'image';
-  if (!/\.[a-z0-9]+$/i.test(seg)) seg += `.${extFromMime(mimeType, 'png')}`;
-  return seg;
+  const stem = seg.replace(/\.[a-z0-9]+$/i, '') || 'image';
+  return `${stem}.${extFromMime(mimeType, 'png')}`;
 }
 
 export interface ResolvedImage {
@@ -84,8 +87,6 @@ export async function resolveImageInput(input: string): Promise<ResolvedImage> {
 interface ResolveRefOpts {
   /** When set, a downloaded remote reference is also saved here as a `z-download-` copy. */
   downloadDir?: string;
-  /** Shared reserved-filename set, so concurrent downloads don't collide. */
-  reserved: Set<string>;
 }
 
 interface ResolvedRef {
@@ -123,7 +124,7 @@ async function referenceFromUrl(url: string, opts: ResolveRefOpts): Promise<Reso
   // copy we verified rather than a URL it might not reach. Persist it too.
   const resolved = asReference(bytes, mimeType);
   if (!opts.downloadDir) return resolved;
-  const saved = await saveDownloadCopy(opts.downloadDir, bytes, downloadFilename(url, mimeType), opts.reserved);
+  const saved = await saveDownloadCopy(opts.downloadDir, bytes, downloadFilename(url, mimeType));
   return { ...resolved, downloadPath: saved.path };
 }
 
@@ -192,13 +193,11 @@ export interface ReferenceResolution {
  * the tool can refuse to generate unless ALL references resolved. Remote URLs
  * are downloaded; pass `downloadDir` to also persist each as a `z-download-` copy.
  */
-export async function resolveReferenceImages(inputs: string[], opts: { downloadDir?: string } = {}): Promise<ReferenceResolution> {
+export async function resolveReferenceImages(inputs: string[], opts: ResolveRefOpts = {}): Promise<ReferenceResolution> {
   const references: ReferenceImage[] = [];
   const downloads: string[] = [];
   const errors: string[] = [];
-  const reserved = new Set<string>();
-  const refOpts: ResolveRefOpts = { reserved, ...(opts.downloadDir ? { downloadDir: opts.downloadDir } : {}) };
-  const settled = await Promise.allSettled(inputs.map((i) => resolveReferenceImage(i, refOpts)));
+  const settled = await Promise.allSettled(inputs.map((i) => resolveReferenceImage(i, opts)));
   settled.forEach((r, i) => {
     if (r.status === 'fulfilled') {
       references.push(r.value.image);
@@ -219,12 +218,13 @@ export function referenceToUrl(r: Pick<ReferenceImage, 'url' | 'bytes' | 'mimeTy
 
 /**
  * The filename part of an input without its extension (`C:\x\favicon.ico` → `favicon`,
- * `https://h/a/logo.png?s=2` → `logo`); '' for inline data (data: URLs, raw base64), where
- * each caller picks its own fallback name.
+ * `https://h/a/logo.png?s=2` → `logo`); '' for inline data (data: URLs, raw base64 including
+ * line-wrapped), where each caller picks its own fallback name. The stem is NOT filename-safe:
+ * a URL can contain `:` or `*`, so sanitize it before writing a file named after it.
  */
 export function inputStem(input: string): string {
   const s = input.trim();
-  if (/^data:/i.test(s) || /^[A-Za-z0-9+/=]+$/.test(s)) return '';
+  if (/^data:/i.test(s) || /^[A-Za-z0-9+/=]+$/.test(s) || decodeRawBase64(s)) return '';
   const tail = s.replace(/[?#].*$/, '').replace(/\\/g, '/').split('/').pop() ?? '';
   return tail.replace(/\.[^.]+$/, '');
 }

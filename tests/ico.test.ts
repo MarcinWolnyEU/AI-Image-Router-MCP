@@ -7,7 +7,9 @@
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { fitSquare, buildIco, icoImageFromPng, icoSizeOfSquare, isIcoBytes, parseIco, pickGenerationResolution, resolutionPixels } from '../src/media/ico.js';
@@ -103,6 +105,13 @@ function dibEntry(
 
 /** RGBA of pixel (x, y) in a decoded layer. */
 const px = (l: IcoLayer, x: number, y: number): number[] => [...l.data.subarray((y * l.width + x) * 4, (y * l.width + x) * 4 + 4)];
+
+/** The [r, g, b] at the centre of a saved image. */
+async function centreRgb(uri: string): Promise<number[]> {
+  const { data, info } = await sharp(await readFile(uriToPath(uri))).raw().toBuffer({ resolveWithObject: true });
+  const c = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
+  return [data[c]!, data[c + 1]!, data[c + 2]!];
+}
 
 /** A typical modern favicon: a PNG-compressed 256 entry + an 8-bpp paletted 16 entry. */
 async function realWorldFavicon(): Promise<Buffer> {
@@ -416,6 +425,37 @@ describe('transform_media ico (multi-size + merge + dedupe) over the MCP tool', 
     assert.ok(data[centre]! > 200 && data[centre + 2]! < 50, 'first unpacked file was not overwritten');
   });
 
+  it('a size repeated inside one ICO keeps both entries (-WxH, -WxH-2), each with its own pixels', async () => {
+    const icoPath = join(outDir, 'dupes.ico');
+    await writeFile(icoPath, rawIco([
+      { size: 32, bitCount: 32, data: await squarePng(32, '#ff0000') },
+      { size: 32, bitCount: 32, data: await squarePng(32, '#0000ff') },
+      { size: 16, bitCount: 32, data: await squarePng(16, '#00ff00') },
+    ]));
+    const r = await call('transform_media', { image: icoPath, output_format: 'png' });
+    assert.equal(r.isError, undefined, textOf(r));
+    const links = linksOf(r);
+    assert.deepEqual(links.map((l) => l.name), ['dupes-32x32.png', 'dupes-32x32-2.png', 'dupes-16x16.png']);
+    assert.deepEqual(await centreRgb(links[0]!.uri), [255, 0, 0]);
+    assert.deepEqual(await centreRgb(links[1]!.uri), [0, 0, 255]);
+    assert.deepEqual(await centreRgb(links[2]!.uri), [0, 255, 0]);
+  });
+
+  it('concurrent unpacks of same-named icons never share a file', async () => {
+    const colours: Array<[string, number[]]> = [['#ff0000', [255, 0, 0]], ['#0000ff', [0, 0, 255]], ['#00ff00', [0, 255, 0]]];
+    const sources = await Promise.all(colours.map(async ([hex], i) => {
+      const dir = join(outDir, `race-src-${i}`);
+      await mkdir(dir);
+      const path = join(dir, 'race.ico');
+      await writeFile(path, buildIco([icoImageFromPng(await squarePng(24, hex))]));
+      return path;
+    }));
+    const results = await Promise.all(sources.map((image) => call('transform_media', { image, output_format: 'png' })));
+    const links = results.map((r) => link(r)!);
+    assert.equal(new Set(links.map((l) => l.name)).size, links.length, links.map((l) => l.name).join(', '));
+    for (const [i, l] of links.entries()) assert.deepEqual(await centreRgb(l.uri), colours[i]![1], l.name);
+  });
+
   it('save:false unpacks without writing any file', async () => {
     const before = new Set(await readdir(outDir));
     const dataUrl = `data:image/x-icon;base64,${buildIco([icoImageFromPng(await squarePng(16)), icoImageFromPng(await squarePng(32))]).toString('base64')}`;
@@ -438,6 +478,37 @@ describe('transform_media ico (multi-size + merge + dedupe) over the MCP tool', 
     assert.equal(meta.format, 'webp');
     assert.equal(meta.width, 48);
   }, { timeout: 15000 });
+
+  it('makes a URL filename safe before naming files after it (a colon would hide the bytes in an NTFS stream)', async () => {
+    const ico = buildIco([icoImageFromPng(await squarePng(16))]);
+    const server = createServer((_req, res) => res.end(ico));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    try {
+      const { port } = server.address() as AddressInfo;
+      const r = await call('transform_media', { image: `http://127.0.0.1:${port}/a/foo:bar*baz.ico`, output_format: 'png' });
+      assert.equal(r.isError, undefined, textOf(r));
+      const saved = link(r)!;
+      assert.equal(saved.name, 'foo-bar-baz-16x16.png');
+      assert.equal((await sharp(await readFile(uriToPath(saved.uri))).metadata()).width, 16);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+
+  it('turns spaces in a source filename into dashes', async () => {
+    const icoPath = join(outDir, 'my icon.ico');
+    await writeFile(icoPath, buildIco([icoImageFromPng(await squarePng(16))]));
+    const r = await call('transform_media', { image: icoPath, output_format: 'png' });
+    assert.equal(r.isError, undefined, textOf(r));
+    assert.equal(link(r)!.name, 'my-icon-16x16.png');
+  });
+
+  it('unpacks line-wrapped base64 under the fallback name `icon-...`', async () => {
+    const b64 = buildIco([icoImageFromPng(await squarePng(16))]).toString('base64');
+    const r = await call('transform_media', { image: b64.match(/.{1,40}/g)!.join('\n'), output_format: 'png' });
+    assert.equal(r.isError, undefined, textOf(r));
+    assert.match(link(r)!.name, /^icon(-\d+)?-16x16\.png$/);
+  });
 
   it('ignores width/height when unpacking an ICO (sizes come from the entries)', async () => {
     const icoPath = join(outDir, 'sizes.ico');

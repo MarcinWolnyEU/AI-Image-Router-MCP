@@ -4,7 +4,8 @@
  * transport (stdio vs HTTP + auth). Each `configure*` returns its config fragment.
  */
 import { existsSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import prompts from 'prompts';
 import { BG_MODELS, providerAvailable, resolveExecutionProvider, type BgExecutionProvider, type BgModelKey } from '../bgremoval/models.js';
@@ -255,9 +256,14 @@ async function askHttpBinding(host: string, port: number): Promise<{ host: strin
 async function ensureHttpAuthTokenFile(): Promise<NonNullable<AppConfig['http']['authToken']>> {
   const file = HTTP_AUTH_TOKEN_FILE;
   const p = resolvePath(file);
-  if (!existsSync(p)) {
-    await writeFile(p, randomBytes(24).toString('base64url') + '\n', 'utf8');
+  // A fresh install has no state directory yet: saveConfig creates it, but only after this step.
+  await mkdir(dirname(p), { recursive: true });
+  try {
+    // `wx`: create only if absent, atomically (never overwrite an existing token); mode 0o600 applies on POSIX only.
+    await writeFile(p, randomBytes(24).toString('base64url') + '\n', { encoding: 'utf8', flag: 'wx', mode: 0o600 });
     log(`Generated a random HTTP auth token in "${file}" (send it as "Authorization: Bearer <token>").`);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
   }
   return { type: 'file', value: file };
 }
@@ -270,7 +276,10 @@ async function chooseHttpAuth(current: AppConfig['http']['authToken']): Promise<
     initial: true,
   });
   if (!requireAuth) return null;
-  return current ?? (await ensureHttpAuthTokenFile());
+  // The default file may be gone even when the config names it (deleted, or the config was copied to a
+  // new home), and the server won't start without it. A file that exists is kept; a custom source is the user's.
+  const namesDefaultFile = current?.type === 'file' && current.value === HTTP_AUTH_TOKEN_FILE;
+  return !current || namesDefaultFile ? ensureHttpAuthTokenFile() : current;
 }
 
 const HTTP_DEFAULTS = configSchema.shape.http.parse(undefined);

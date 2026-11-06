@@ -39,5 +39,7 @@ describe('inputStem', () => {
   it('is empty for inline data (data: URLs, raw base64), so callers choose their fallback', () => {
     assert.equal(inputStem('data:image/png;base64,iVBORw0KGgo='), '');
     assert.equal(inputStem('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'), '');
+    assert.equal(inputStem('iVBORw0KGgoAAAAN\nSUhEUgAAAAEAAAAB'), '', 'line-wrapped base64');
+    assert.equal(inputStem('iVBORw0KGgoAAAAN\r\nSUhEUgAAAAEAAAAB'), '', 'CRLF-wrapped base64');
   });
 });

@@ -7,16 +7,16 @@
  *
  * Run: `npm test`  (node:test via tsx, no test framework dependency).
  */
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, readdir, writeFile, type FileHandle } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import sharp from 'sharp';
 import { decodeRawBase64, resolveImageInput, resolveMediaInput, resolveReferenceImages } from '../src/util/inputs.js';
-import { saveDownloadCopy, sanitizeFilename } from '../src/util/files.js';
+import { saveDownloadCopy, saveFileGroup, sanitizeFilename } from '../src/util/files.js';
 
 // A real 1×1 PNG (valid header → detected as image/png).
 const PNG_1x1 = Buffer.from(
@@ -38,23 +38,25 @@ let webp: Buffer;
 before(async () => {
   jpeg = await sharp(PNG_1x1).jpeg().toBuffer();
   webp = await sharp(PNG_1x1).webp().toBuffer();
+  const asPng = (body: Buffer | string) => ({ status: 200, type: 'image/png', body });
+  const routes: Record<string, { status: number; type?: string; body: Buffer | string }> = {
+    '/pic.png': asPng(PNG_1x1),
+    '/photo.jpg': { status: 200, type: 'image/jpeg', body: jpeg },
+    // No extension in the URL; extension must come from the mime type.
+    '/noext': asPng(PNG_1x1),
+    // Valid image bytes whose URL names some other extension.
+    '/payload.html': asPng(PNG_1x1),
+    '/mislabelled.jpg': asPng(PNG_1x1),
+    '/photo.jpeg': asPng(jpeg),
+    // A filename that percent-encodes to more than a filesystem allows.
+    [`/${'%E6%97%A5'.repeat(30)}.png`]: asPng(PNG_1x1),
+    // Claims to be a PNG but the bytes are HTML; magic-byte check must reject.
+    '/lies.png': asPng('<!doctype html><html>nope</html>'),
+    '/missing': { status: 404, body: 'not found' },
+  };
   server = createServer((req, res) => {
-    const url = (req.url ?? '').split('?')[0];
-    if (url === '/pic.png') {
-      res.writeHead(200, { 'content-type': 'image/png' }).end(PNG_1x1);
-    } else if (url === '/photo.jpg') {
-      res.writeHead(200, { 'content-type': 'image/jpeg' }).end(jpeg);
-    } else if (url === '/noext') {
-      // No extension in the URL; extension must come from the mime type.
-      res.writeHead(200, { 'content-type': 'image/png' }).end(PNG_1x1);
-    } else if (url === '/lies.png') {
-      // Claims to be a PNG but the bytes are HTML; magic-byte check must reject.
-      res.writeHead(200, { 'content-type': 'image/png' }).end('<!doctype html><html>nope</html>');
-    } else if (url === '/missing') {
-      res.writeHead(404).end('not found');
-    } else {
-      res.writeHead(404).end('unknown');
-    }
+    const route = routes[(req.url ?? '').split('?')[0]!] ?? { status: 404, body: 'unknown' };
+    res.writeHead(route.status, route.type ? { 'content-type': route.type } : {}).end(route.body);
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const addr = server.address();
@@ -198,6 +200,29 @@ describe('reference resolution: remote downloads', () => {
     assert.equal(basename(downloads[0]!), 'z-download-noext.png');
   });
 
+  it('names the saved copy from its verified bytes, never from the extension in the URL', async () => {
+    const cases: Array<[string, string]> = [
+      ['/payload.html', 'z-download-payload.png'], // active content can't land on disk under its own extension
+      ['/mislabelled.jpg', 'z-download-mislabelled.png'],
+      ['/photo.jpeg', 'z-download-photo.jpg'],
+    ];
+    for (const [path, expected] of cases) {
+      const dir = await tmp();
+      const { downloads, errors } = await resolveReferenceImages([`${base}${path}`], { downloadDir: dir });
+      assert.equal(errors.length, 0, path);
+      assert.equal(basename(downloads[0]!), expected);
+    }
+  });
+
+  it('a URL filename too long for the filesystem still resolves, under a shortened name', async () => {
+    const dir = await tmp();
+    const { references, downloads, errors } = await resolveReferenceImages([`${base}/${'日'.repeat(30)}.png`], { downloadDir: dir });
+    assert.deepEqual(errors, []);
+    assert.equal(references.length, 1);
+    assert.match(basename(downloads[0]!), /^z-download-(%E6%97%A5)+.*\.png$/);
+    assert.ok(existsSync(downloads[0]!));
+  });
+
   it('does not save a copy when no downloadDir is given', async () => {
     const { references, downloads, errors } = await resolveReferenceImages([`${base}/pic.png`]);
     assert.equal(errors.length, 0);
@@ -262,14 +287,138 @@ describe('saveDownloadCopy / sanitizeFilename', () => {
     assert.equal(sanitizeFilename('....'), 'file');
   });
 
-  it('prefixes z-download-, sanitizes, and dedups against disk + the reserved set', async () => {
+  it('caps a long name without splitting a character or leaving a trailing dot', () => {
+    assert.equal(sanitizeFilename('a'.repeat(300)), 'a'.repeat(120));
+    const cjk = sanitizeFilename(`a${'日'.repeat(100)}`); // the byte limit falls inside a character
+    assert.equal(cjk, `a${'日'.repeat(39)}`);
+    assert.equal(sanitizeFilename(`${'a'.repeat(119)}.${'b'.repeat(50)}`), 'a'.repeat(119));
+  });
+
+  it('prefixes z-download-, sanitizes, and dedups against disk', async () => {
     const dir = await tmp();
-    const reserved = new Set<string>();
-    const a = await saveDownloadCopy(dir, PNG_1x1, 'we:rd*name.png', reserved);
-    const b = await saveDownloadCopy(dir, PNG_1x1, 'we:rd*name.png', reserved);
+    const a = await saveDownloadCopy(dir, PNG_1x1, 'we:rd*name.png');
+    const b = await saveDownloadCopy(dir, PNG_1x1, 'we:rd*name.png');
     assert.equal(basename(a.path), 'z-download-we-rd-name.png');
     assert.equal(basename(b.path), 'z-download-we-rd-name-1.png');
     assert.ok(existsSync(a.path) && existsSync(b.path));
+  });
+
+  it('never overwrites a file already on disk (EEXIST → next suffix)', async () => {
+    const dir = await tmp();
+    await writeFile(join(dir, 'z-download-pic.png'), 'ORIGINAL');
+    await writeFile(join(dir, 'z-download-pic-1.png'), 'ORIGINAL-1');
+    const saved = await saveDownloadCopy(dir, PNG_1x1, 'pic.png');
+    assert.equal(basename(saved.path), 'z-download-pic-2.png');
+    assert.equal(await readFile(join(dir, 'z-download-pic.png'), 'utf8'), 'ORIGINAL');
+    assert.equal(await readFile(join(dir, 'z-download-pic-1.png'), 'utf8'), 'ORIGINAL-1');
+    assert.ok((await readFile(saved.path)).equals(PNG_1x1));
+  });
+
+  it('skips a name occupied by a directory instead of failing or looping', async () => {
+    const dir = await tmp();
+    await mkdir(join(dir, 'z-download-pic.png'));
+    const saved = await saveDownloadCopy(dir, PNG_1x1, 'pic.png');
+    assert.equal(basename(saved.path), 'z-download-pic-1.png');
+  });
+
+  it('concurrent saves get distinct files and keep their own bytes', async () => {
+    const dir = await tmp();
+    const payloads = [0, 1, 2, 3].map((i) => Buffer.from(`payload-${i}`));
+    const saved = await Promise.all(payloads.map((p) => saveDownloadCopy(dir, p, 'same.bin')));
+    assert.equal(new Set(saved.map((s) => s.path)).size, payloads.length);
+    for (const [i, s] of saved.entries()) assert.equal(await readFile(s.path, 'utf8'), `payload-${i}`);
+  });
+
+  it('a write that fails partway leaves no partial copy', async (t) => {
+    const dir = await tmp();
+    await instrumentWrites(t, 1);
+    await assert.rejects(saveDownloadCopy(dir, PNG_1x1, 'pic.png'), /ENOSPC/);
+    assert.deepEqual(await readdir(dir), []);
+  });
+});
+
+/**
+ * Counts writes through a FileHandle (returned as a getter). With `failOn`, that write puts one
+ * byte on disk and then fails the way a full disk does, after the file was created.
+ */
+async function instrumentWrites(t: TestContext, failOn?: number): Promise<() => number> {
+  const probe = await open(join(await tmp(), 'probe'), 'w');
+  const proto = Object.getPrototypeOf(probe);
+  await probe.close();
+  const realWrite = proto.writeFile;
+  let count = 0;
+  t.mock.method(proto, 'writeFile', async function (this: FileHandle, data: Buffer) {
+    count++;
+    if (count !== failOn) return realWrite.call(this, data);
+    await this.write(data.subarray(0, 1));
+    throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' });
+  });
+  return () => count;
+}
+
+describe('saveFileGroup', () => {
+  const group = (tag: string) => [
+    { suffix: '-16x16.png', bytes: Buffer.from(`${tag}-16`) },
+    { suffix: '-32x32.png', bytes: Buffer.from(`${tag}-32`) },
+  ];
+
+  it('a taken name costs no writes: bytes go out only once the whole group has its names', async (t) => {
+    const dir = await tmp();
+    await writeFile(join(dir, 'icon-32x32.png'), 'ORIGINAL');
+    const writes = await instrumentWrites(t);
+    const saved = await saveFileGroup(dir, 'icon', group('new'));
+    assert.deepEqual(saved.map((s) => s.filename), ['icon-2-16x16.png', 'icon-2-32x32.png']);
+    assert.equal(writes(), 2);
+  });
+
+  it('a write that fails partway removes the partial file and the rest of the group, and nothing else', async (t) => {
+    const dir = await tmp();
+    await writeFile(join(dir, 'unrelated.png'), 'ORIGINAL');
+    await instrumentWrites(t, 2); // the first file is complete, the second is cut off
+    await assert.rejects(saveFileGroup(dir, 'icon', group('new')), /ENOSPC/);
+    assert.deepEqual(await readdir(dir), ['unrelated.png']);
+    assert.equal(await readFile(join(dir, 'unrelated.png'), 'utf8'), 'ORIGINAL');
+  });
+
+  it('moves the whole group to the next stem when any name is taken, leaving no stray file', async () => {
+    const dir = await tmp();
+    await writeFile(join(dir, 'icon-32x32.png'), 'ORIGINAL');
+    const saved = await saveFileGroup(dir, 'icon', group('new'));
+    assert.deepEqual(saved.map((s) => s.filename), ['icon-2-16x16.png', 'icon-2-32x32.png']);
+    assert.deepEqual((await readdir(dir)).sort(), ['icon-2-16x16.png', 'icon-2-32x32.png', 'icon-32x32.png']);
+    assert.equal(await readFile(join(dir, 'icon-32x32.png'), 'utf8'), 'ORIGINAL');
+  });
+
+  it('concurrent groups with one stem never share or overwrite a file', async () => {
+    const dir = await tmp();
+    const tags = ['a', 'b', 'c', 'd'];
+    const groups = await Promise.all(tags.map((t) => saveFileGroup(dir, 'icon', group(t))));
+    assert.equal(new Set(groups.flat().map((s) => s.path)).size, tags.length * 2);
+    for (const [i, g] of groups.entries()) {
+      assert.equal(await readFile(g[0]!.path, 'utf8'), `${tags[i]}-16`);
+      assert.equal(await readFile(g[1]!.path, 'utf8'), `${tags[i]}-32`);
+    }
+    assert.equal((await readdir(dir)).length, tags.length * 2, 'no stray file from an abandoned attempt');
+  });
+
+  it('a failed write releases the files this attempt created', async () => {
+    const dir = await tmp();
+    const files = [
+      { suffix: '-16x16.png', bytes: Buffer.from('x') },
+      { suffix: '/missing-dir/x.png', bytes: Buffer.from('y') },
+    ];
+    await assert.rejects(saveFileGroup(dir, 'icon', files), /ENOENT/);
+    assert.deepEqual(await readdir(dir), []);
+  });
+
+  it('refuses a repeated suffix instead of searching for a free stem forever', async () => {
+    const dir = await tmp();
+    const repeated = [
+      { suffix: '-16x16.png', bytes: Buffer.from('x') },
+      { suffix: '-16X16.PNG', bytes: Buffer.from('y') },
+    ];
+    await assert.rejects(saveFileGroup(dir, 'icon', repeated), /Duplicate filename suffix/);
+    assert.deepEqual(await readdir(dir), []);
   });
 });
 
