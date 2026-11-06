@@ -62,9 +62,9 @@ export const FAL_IMAGE_CATALOG: ModelInfo[] = [
 const IMAGE_SIZE_ENUM = ['square_hd', 'square', 'portrait_4_3', 'portrait_16_9', 'landscape_4_3', 'landscape_16_9'];
 
 const specs: { test: (model: string) => boolean; spec: FalImageModelSpec }[] = [
-  // FLUX 2 Pro *Edit*: the one fal endpoint with SUBJECT conditioning (`image_urls[]`).
-  // Must precede the generic FLUX entry, whose regex also matches this id.
-  { test: (m) => /flux-2-pro\/edit|flux-2\/edit|\/edit$/i.test(m) && /flux/i.test(m), spec: {
+  // FLUX *Edit* (any FLUX id with an `/edit` path segment, e.g. `flux-2-pro/edit`, `flux-2/klein/4b/edit/lora`):
+  // SUBJECT conditioning (`image_urls[]`). Must precede the generic FLUX entry, whose regex also matches these ids.
+  { test: (m) => /\/edit(\/|$)/i.test(m) && /flux/i.test(m), spec: {
     sizeField: 'image_size', objectSize: true, sizes: IMAGE_SIZE_ENUM,
     outputFormat: true, enableSafetyChecker: true, safetyTolerance: true,
     referenceField: 'image_urls', referenceSemantics: 'subject',

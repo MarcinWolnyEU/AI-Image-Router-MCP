@@ -8,6 +8,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { FalGateway } from '../src/gateways/fal.js';
+import { falImageSpec } from '../src/gateways/falModels.js';
 import type { Logger } from '../src/logging/logger.js';
 import type { VideoGenParams } from '../src/gateways/types.js';
 import { describeError } from '../src/tools/helpers.js';
@@ -181,5 +182,19 @@ describe('fal safety settings are opt-in', () => {
     const body = await submittedBody({ relaxSafety: true });
     assert.equal(body['enable_safety_checker'], false);
     assert.equal(body['safety_tolerance'], '5');
+  });
+});
+
+describe('falImageSpec: FLUX edit endpoints', () => {
+  it('gives subject references to every FLUX id with an /edit path segment', () => {
+    for (const id of ['fal-ai/flux-2-pro/edit', 'fal-ai/flux-2/edit', 'fal-ai/flux-2/turbo/edit', 'fal-ai/flux-2-max/edit', 'fal-ai/flux-2/klein/4b/edit', 'fal-ai/flux-2/klein/4b/edit/lora', 'fal-ai/flux-2/klein/9b/base/edit/lora']) {
+      assert.equal(falImageSpec(id)?.referenceField, 'image_urls', id);
+    }
+  });
+
+  it('does not treat a merely similar id as an edit endpoint', () => {
+    for (const id of ['fal-ai/flux-2-pro', 'fal-ai/flux-2-pro/editor', 'fal-ai/recraft/edit']) {
+      assert.notEqual(falImageSpec(id)?.referenceField, 'image_urls', id);
+    }
   });
 });

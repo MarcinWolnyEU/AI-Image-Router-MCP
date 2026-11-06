@@ -68,7 +68,7 @@ With `output_format: "ico"` and an array of images, the tool builds a multi-size
 
 Pass `sizes` to declare the set the icon must contain. The result must equal it exactly or the call fails and writes nothing. With one size per input, a file whose real dimensions differ from its declared slot is reported by name. Either way, every entry is listed with the input it came from. Use `build_icon_set` when you want the sizes derived instead of validated.
 
-An ICO input with a non-ico image `output_format` unpacks every size into its own file named `<stem>-<WxH>.<ext>` (for example `favicon-256x256.png`). The stem is the source filename without its extension, or `icon` for a URL, data URL or base64 input. Existing files are never overwritten: if a name is taken, the whole set gets a numbered stem (`icon-2-48x48.png`). `width` and `height` are ignored when unpacking.
+An ICO input with a non-ico image `output_format` unpacks every size into its own file named `<stem>-<WxH>.<ext>` (for example `favicon-256x256.png`). The stem is the filename of the source path or URL without its extension, or `icon` for a data URL or base64 input. Spaces and characters that aren't safe in a filename become `-`, and very long names are shortened. Existing files are never overwritten: if a name is taken, the whole set gets a numbered stem (`icon-2-48x48.png`). A size repeated inside one ICO keeps every entry: the later one is `<stem>-<WxH>-2.<ext>`. `width` and `height` are ignored when unpacking.
 
 ICO inputs are read with the project's own decoder. It handles PNG-compressed entries (the 256 px entry in most modern favicons), 1, 4 and 8 bit paletted, 16, 24 and 32 bit bitmaps, and the AND transparency mask.
 

@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { mkdir, open, rm, writeFile, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -63,6 +62,12 @@ export async function saveMedia(
 }
 
 /**
+ * Longest name `sanitizeFilename` returns, in UTF-8 bytes. Filesystems allow 255 per path
+ * component, so this leaves room for what callers add (`z-download-`, `-2-256x256.avif`).
+ */
+const MAX_SANITIZED_BYTES = 120;
+
+/**
  * Make a string safe to use as a filename on Windows, macOS and Linux.
  * Replaces, with '-', the union of disallowed characters: the Windows set
  * (`< > : " / \ | ? *`), a superset that also covers the `/` and `:` that
@@ -70,41 +75,113 @@ export async function saveMedia(
  * internal whitespace. Leading/trailing whitespace and dots are trimmed first
  * (Windows rejects trailing dots/spaces; a leading dot would hide the file on
  * Unix), so a trailing space disappears while an invalid char like '?' becomes
- * a kept '-'. Falls back to 'file' if nothing usable remains.
+ * a kept '-'. Long names are cut to `MAX_SANITIZED_BYTES`. Falls back to 'file'
+ * if nothing usable remains.
  */
 export function sanitizeFilename(name: string): string {
   const cleaned = name
     .replace(/^[\s.]+|[\s.]+$/gu, '')
     .replace(/[<>:"/\\|?*\s\p{Cc}]/gu, '-');
-  return cleaned || 'file';
+  // A cut through a multi-byte character decodes to U+FFFD; drop that and any dot the cut exposed.
+  const capped = Buffer.from(cleaned).subarray(0, MAX_SANITIZED_BYTES).toString('utf8').replace(/[�.]+$/u, '');
+  return capped || 'file';
+}
+
+/** A file this process created and holds open, so nothing else can take the name before its bytes arrive. */
+interface FileClaim {
+  path: string;
+  filename: string;
+  handle: FileHandle;
+}
+
+/**
+ * Create `filename` in `dir` only if the name is free; `null` means it was taken. `wx` fails
+ * with EEXIST instead of overwriting, so there is no check-then-write window (another process,
+ * or a pre-planted file/symlink, can't be clobbered).
+ */
+async function claimFile(dir: string, filename: string): Promise<FileClaim | null> {
+  const path = join(dir, filename);
+  try {
+    return { path, filename, handle: await open(path, 'wx') };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return null;
+    throw err;
+  }
+}
+
+async function fillClaim({ path, filename, handle }: FileClaim, bytes: Buffer): Promise<SavedFile> {
+  await handle.writeFile(bytes);
+  await handle.close();
+  return { path, filename, uri: pathToFileURL(path).href, bytes: bytes.length };
+}
+
+/**
+ * Delete a claimed file. Cleanup only ever goes through a claim, because a failed `open` proves
+ * nothing about who owns that path. Closes first: Windows can't delete an open file.
+ */
+async function releaseClaim({ path, handle }: FileClaim): Promise<void> {
+  await handle.close().catch(() => {});
+  await rm(path, { force: true }).catch(() => {});
 }
 
 /**
  * Save a downloaded copy into `dir`, named `z-download-<sanitized>` so it sorts
  * to the end of the folder listing. Invalid filename characters become '-'; if
  * the name is already taken, a numeric suffix (`-1`, `-2`, …) is appended.
- * `reserved` (lowercased filenames) guards against collisions between
- * concurrent saves in the same batch before the file is written.
  */
-export async function saveDownloadCopy(
-  dir: string,
-  bytes: Buffer,
-  suggestedName: string,
-  reserved: Set<string> = new Set(),
-): Promise<SavedFile> {
+export async function saveDownloadCopy(dir: string, bytes: Buffer, suggestedName: string): Promise<SavedFile> {
   await mkdir(dir, { recursive: true });
   const dot = suggestedName.lastIndexOf('.');
   const base = sanitizeFilename(dot > 0 ? suggestedName.slice(0, dot) : suggestedName);
   const ext = dot > 0 ? sanitizeFilename(suggestedName.slice(dot + 1)) : '';
   const suffix = ext ? `.${ext}` : '';
-  let filename = `z-download-${base}${suffix}`;
-  for (let n = 1; reserved.has(filename.toLowerCase()) || existsSync(join(dir, filename)); n++) {
-    filename = `z-download-${base}-${n}${suffix}`;
+  for (let n = 0; ; n++) {
+    const stem = n === 0 ? `z-download-${base}` : `z-download-${base}-${n}`;
+    const saved = await claimFileGroup(dir, stem, [{ suffix, bytes }]);
+    if (saved) return saved[0]!;
   }
-  reserved.add(filename.toLowerCase()); // reserve synchronously (no await before this) so concurrent saves can't pick it
-  const path = join(dir, filename);
-  await writeFile(path, bytes);
-  return { path, filename, uri: pathToFileURL(path).href, bytes: bytes.length };
+}
+
+/**
+ * Save files that belong together as `<stem><suffix>`. The group takes the first of `stem`,
+ * `stem-2`, `stem-3`, … where every name is free. Names are claimed atomically, so concurrent
+ * groups can't share or overwrite a file. Suffixes must be unique: a repeat could never fit
+ * under any stem.
+ */
+export async function saveFileGroup(dir: string, stem: string, files: { suffix: string; bytes: Buffer }[]): Promise<SavedFile[]> {
+  if (new Set(files.map((f) => f.suffix.toLowerCase())).size !== files.length) {
+    throw new Error(`Duplicate filename suffix in the "${stem}" file group.`);
+  }
+  await mkdir(dir, { recursive: true });
+  for (let n = 1; ; n++) {
+    const saved = await claimFileGroup(dir, n === 1 ? stem : `${stem}-${n}`, files);
+    if (saved) return saved;
+  }
+}
+
+/**
+ * One attempt at a group: `null` when a name is taken. Every name is claimed before any bytes are
+ * written, so a taken name costs no writes. Taken name or failed write, it leaves none of its files behind.
+ */
+async function claimFileGroup(dir: string, stem: string, files: { suffix: string; bytes: Buffer }[]): Promise<SavedFile[] | null> {
+  const claims: FileClaim[] = [];
+  const release = () => Promise.all(claims.map(releaseClaim));
+  try {
+    for (const { suffix } of files) {
+      const claim = await claimFile(dir, `${stem}${suffix}`);
+      if (!claim) {
+        await release();
+        return null;
+      }
+      claims.push(claim);
+    }
+    const saved: SavedFile[] = [];
+    for (const [i, claim] of claims.entries()) saved.push(await fillClaim(claim, files[i]!.bytes));
+    return saved;
+  } catch (err) {
+    await release();
+    throw err;
+  }
 }
 
 /** A shared, unique filename stem (no extension) for grouping related outputs. */

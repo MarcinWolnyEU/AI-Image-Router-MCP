@@ -1,6 +1,6 @@
 import { createHash, type Hash } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
@@ -359,32 +359,26 @@ export function huggingFaceConfigUrl(url: string): string | null {
 }
 
 /**
- * Fetch the model repo's `config.json` next to the model (overwriting whatever a previous
- * Hugging Face model left there) so Hugging Face registers the download. Best-effort: the
- * model is already downloaded and verified, so a repo without a config.json, or a network
- * hiccup, is reported but never fails the download.
+ * Send Hugging Face the request that registers a download: every GET or HEAD of `config.json`
+ * counts, so a HEAD is enough and nothing is saved. Best-effort: the model is already downloaded
+ * and verified, so a repo without a config.json, or a network hiccup, is reported but never
+ * fails the download.
  */
-async function fetchHuggingFaceConfig(spec: BgModelSpec, dir: string, onProgress?: DownloadProgress): Promise<void> {
+async function registerHuggingFaceDownload(spec: BgModelSpec, onProgress?: DownloadProgress): Promise<void> {
   const configUrl = huggingFaceConfigUrl(spec.url);
   if (!configUrl) return;
-  const target = join(dir, 'config.json');
-  const tmp = `${target}.part`;
   try {
-    const res = await fetch(configUrl, { redirect: 'follow', signal: AbortSignal.timeout(15_000) });
+    const res = await fetch(configUrl, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await writeFile(tmp, Buffer.from(await res.arrayBuffer()));
-    await rename(tmp, target);
   } catch (err) {
-    await rm(tmp, { force: true }).catch(() => {});
-    onProgress?.({ phase: 'done', message: `Could not fetch ${configUrl} (${(err as Error).message}); the model itself is fine.` });
+    onProgress?.({ phase: 'done', message: `Could not request ${configUrl} (${(err as Error).message}); the model itself is fine.` });
   }
 }
 
 /**
  * Ensure the given model's .onnx file is present locally (downloading + checksum-verifying
  * if necessary). Returns the absolute path. Idempotent. A model hosted on Hugging Face also
- * gets its repo's `config.json` fetched into the same directory after a fresh download
- * (see `fetchHuggingFaceConfig`).
+ * has its download registered after a fresh download (see `registerHuggingFaceDownload`).
  */
 export async function ensureModelFile(spec: BgModelSpec, modelsDir: string, onProgress?: DownloadProgress): Promise<string> {
   const dir = resolvePath(modelsDir);
@@ -420,7 +414,7 @@ export async function ensureModelFile(spec: BgModelSpec, modelsDir: string, onPr
     throw new Error(`Checksum mismatch for ${spec.filename}: expected ${spec.hash.algo}:${spec.hash.value}, got ${digest}. Download may be corrupt.`);
   }
   await rename(tmpPath, finalPath);
-  await fetchHuggingFaceConfig(spec, dir, onProgress);
+  await registerHuggingFaceDownload(spec, onProgress);
   onProgress?.({ phase: 'done', message: `Downloaded and verified ${spec.filename}.` });
   return finalPath;
 }

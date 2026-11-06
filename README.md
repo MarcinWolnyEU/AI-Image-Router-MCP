@@ -121,7 +121,7 @@ Tokens come from a file, an environment variable or the config file itself. They
 
 The HTTP transport is off by default. If you turn it on, set a bearer token before exposing the port beyond localhost. See [Security](#security).
 
-There is no analytics and no telemetry. The only network calls are to the gateway you configured, Tinify if you enabled it, and GitHub (or Hugging Face for BEN2 and the Finegrain box segmenter) when a background-removal model is downloaded for the first time. The download is between 117 MB and 1 GB and is checked against a stored hash. A model from Hugging Face also gets its repo's small `config.json` fetched into the models folder (overwriting the one a previous Hugging Face model left there), because that request is how Hugging Face counts a download for the model's authors.
+There is no analytics and no telemetry. The only network calls are to the gateway you configured, Tinify if you enabled it, and GitHub (or Hugging Face for BEN2 and the Finegrain box segmenter) when a background-removal model is downloaded for the first time. The download is between 117 MB and 1 GB and is checked against a stored hash. Downloading a model from Hugging Face also sends one `HEAD` request for its repo's `config.json`, because that request is how Hugging Face counts a download for the model's authors. Nothing from that request is saved.
 
 ## Tools
 

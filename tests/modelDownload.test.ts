@@ -53,26 +53,28 @@ describe('ensureModelFile', () => {
   });
 });
 
-describe('Hugging Face config.json companion', () => {
+describe('Hugging Face download count', () => {
   const HF_URL = 'https://huggingface.co/some-owner/some-repo/resolve/main/onnx/model.onnx';
+  const CONFIG_URL = 'https://huggingface.co/some-owner/some-repo/resolve/main/config.json';
   const hfSpec = (): BgModelSpec => ({ ...spec(), url: HF_URL });
 
-  /** Serves BYTES for the model and `configBody` (or a status) for config.json; records every URL. */
-  function serveRepo(configBody: string | number): string[] {
-    const urls: string[] = [];
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+  /** Serves BYTES for the model and `config` (a status, or an error to throw) for config.json; records every request. */
+  function serveRepo(config: number | Error = 200): string[] {
+    const requests: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      urls.push(url);
+      requests.push(`${init?.method ?? 'GET'} ${url}`);
       if (url.endsWith('/config.json')) {
-        return typeof configBody === 'number' ? new Response('nope', { status: configBody }) : new Response(configBody, { status: 200 });
+        if (config instanceof Error) throw config;
+        return new Response(null, { status: config });
       }
       return new Response(BYTES, { status: 200, headers: { 'content-length': String(BYTES.length) } });
     }) as typeof fetch;
-    return urls;
+    return requests;
   }
 
   it('derives the repo-root config.json URL, and only for huggingface.co', () => {
-    assert.equal(huggingFaceConfigUrl(HF_URL), 'https://huggingface.co/some-owner/some-repo/resolve/main/config.json');
+    assert.equal(huggingFaceConfigUrl(HF_URL), CONFIG_URL);
     assert.equal(huggingFaceConfigUrl('https://huggingface.co/o/r/resolve/abc123/BEN2_Base.onnx'), 'https://huggingface.co/o/r/resolve/abc123/config.json');
     assert.equal(huggingFaceConfigUrl('https://github.com/danielgatis/rembg/releases/download/v0.0.0/x.onnx'), null);
     assert.equal(huggingFaceConfigUrl('https://huggingface.co/o/r/blob/main/x.onnx'), null);
@@ -86,41 +88,47 @@ describe('Hugging Face config.json companion', () => {
     }
   });
 
-  it('downloads config.json after the model and overwrites a config.json left by another model', async () => {
+  it('sends one HEAD for config.json after the model and saves nothing', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'air-dl-'));
-    writeFileSync(join(dir, 'config.json'), '{"model_type":"old"}');
-    const urls = serveRepo('{"model_type":"swin"}');
+    const requests = serveRepo();
     const path = await ensureModelFile(hfSpec(), dir);
-    assert.deepEqual(urls, [HF_URL, 'https://huggingface.co/some-owner/some-repo/resolve/main/config.json']);
-    assert.equal(readFileSync(join(dir, 'config.json'), 'utf8'), '{"model_type":"swin"}');
+    assert.deepEqual(requests, [`GET ${HF_URL}`, `HEAD ${CONFIG_URL}`]);
     assert.ok(readFileSync(path).equals(BYTES));
-    assert.equal(existsSync(join(dir, 'config.json.part')), false);
+    assert.equal(existsSync(join(dir, 'config.json')), false);
   });
 
-  it('a missing config.json (404) does not fail the download and leaves the old file alone', async () => {
+  it('leaves a config.json already in the directory alone (with modelsDir "." it is the app config)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'air-dl-'));
     writeFileSync(join(dir, 'config.json'), '{"keep":true}');
-    serveRepo(404);
-    const messages: string[] = [];
-    const path = await ensureModelFile(hfSpec(), dir, (i) => messages.push(i.message));
-    assert.ok(readFileSync(path).equals(BYTES));
+    serveRepo();
+    await ensureModelFile(hfSpec(), dir);
     assert.equal(readFileSync(join(dir, 'config.json'), 'utf8'), '{"keep":true}');
-    assert.ok(messages.some((m) => /Could not fetch .*config\.json.*404/.test(m)), messages.join(' | '));
-    assert.equal(existsSync(join(dir, 'config.json.part')), false);
   });
 
-  it('does not fetch config.json when the model download fails its checksum', async () => {
+  it('a missing config.json or a network error is reported but does not fail the download', async () => {
+    const failures: Array<[number | Error, RegExp]> = [[404, /HTTP 404/], [new Error('socket hang up'), /socket hang up/]];
+    for (const [config, expected] of failures) {
+      const dir = mkdtempSync(join(tmpdir(), 'air-dl-'));
+      serveRepo(config);
+      const messages: string[] = [];
+      const path = await ensureModelFile(hfSpec(), dir, (i) => messages.push(i.message));
+      assert.ok(readFileSync(path).equals(BYTES));
+      assert.ok(messages.some((m) => /Could not request .*config\.json/.test(m) && expected.test(m)), messages.join(' | '));
+    }
+  });
+
+  it('does not request config.json when the model download fails its checksum', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'air-dl-'));
-    const urls = serveRepo('{}');
+    const requests = serveRepo();
     await assert.rejects(ensureModelFile({ ...hfSpec(), hash: { algo: 'md5', value: '0'.repeat(32) } }, dir), /Checksum mismatch/);
-    assert.deepEqual(urls, [HF_URL]);
+    assert.deepEqual(requests, [`GET ${HF_URL}`]);
   });
 
   it('a non-Hugging-Face model never requests a config.json', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'air-dl-'));
-    const urls = serveRepo('{}');
+    const requests = serveRepo();
     await ensureModelFile(spec(), dir);
-    assert.deepEqual(urls, ['https://models.invalid/fake-model.onnx']);
+    assert.deepEqual(requests, ['GET https://models.invalid/fake-model.onnx']);
     assert.equal(existsSync(join(dir, 'config.json')), false);
   });
 });

@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import sharp from 'sharp';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +12,7 @@ import { cropVideo, downsizeVideo, extractFrame, ffmpegAvailable, ffprobeDuratio
 import { convertImage, type ImageFormat } from '../media/convert.js';
 import { tinifyCompress } from '../media/tinify.js';
 import { buildIco, icoEntryToRgba, icoImageFromEntry, icoImageFromPng, icoSizeOfSquare, isAllowedIcoSize, isIcoBytes, parseIco, ICO_ALLOWED_SIZES, ICO_MIME, type IcoEntry } from '../media/ico.js';
-import { ensurePng, extFromMime, makeImagePreview, mediaStem, writeMediaFile, type SavedFile } from '../util/files.js';
+import { ensurePng, extFromMime, makeImagePreview, mediaStem, sanitizeFilename, saveFileGroup, writeMediaFile, type SavedFile } from '../util/files.js';
 import { describeError, errorResult, icoPreviewContent, renderMediaContent, renderIcoMediaContent, NOTHING_RETURNED_NOTE, OUTPUT_MODE_DESCRIPTION, type OutputMode, type ToolContent, type ToolResult } from './helpers.js';
 import { ToolFailure, failuresAsErrorResult } from './toolFailure.js';
 import type { IcoImage } from '@fiahfy/ico';
@@ -89,12 +88,14 @@ async function videoResult(label: string, outputMode: OutputMode, op: (outPath: 
   const filename = `${mediaStem(label)}.mp4`;
   const outPath = join(dir, filename);
   await op(outPath);
-  const size = (await stat(outPath)).size;
+  // base64 mode reads the file once and sizes it from those bytes (no stat-then-read window).
+  const videoBytes = outputMode === 'base64' ? await readFile(outPath) : undefined;
+  const size = videoBytes ? videoBytes.length : (await stat(outPath)).size;
   const saved: SavedFile = { path: outPath, filename, uri: pathToFileURL(outPath).href, bytes: size };
   const lines = [outPath, `Output: video/mp4 (${(size / 1024 / 1024).toFixed(2)} MB)`];
   const content: ToolContent[] = [];
-  if (outputMode === 'base64') {
-    content.push(...(await renderMediaContent({ bytes: await readFile(outPath), mimeType: 'video/mp4', saved, outputMode, inline: false, previewMaxBytes: runtime.config.output.previewMaxBytes, description: `${label} (video)` })));
+  if (videoBytes) {
+    content.push(...(await renderMediaContent({ bytes: videoBytes, mimeType: 'video/mp4', saved, outputMode, inline: false, previewMaxBytes: runtime.config.output.previewMaxBytes, description: `${label} (video)` })));
   } else {
     content.push({ type: 'resource_link', uri: saved.uri, name: filename, mimeType: 'video/mp4', description: `${label} (video)` });
   }
@@ -153,7 +154,8 @@ const IMG_OUT: Record<string, { ext: string; mime: string }> = {
 
 /** Filename stem (no extension) for an output: from a local file or URL path, else `icon`. */
 function sourceStem(name: string | undefined): string {
-  return (name ? inputStem(name) : '') || 'icon';
+  const stem = name ? inputStem(name) : '';
+  return stem ? sanitizeFilename(stem) : 'icon';
 }
 
 function wantsResize(c: TransformCtx): boolean {
@@ -480,12 +482,11 @@ async function previewUnpackedLayers(layers: UnpackedLayer[], mime: string, inli
 
 async function saveUnpackedLayers(layers: UnpackedLayer[], spec: { ext: string; mime: string }, c: TransformCtx): Promise<ToolResult> {
   const { ext, mime } = spec;
-  const dir = runtime.outputDir();
-  const stem = freeSetStem(dir, sourceStem(c.sourceName), layers.map((l) => `-${l.width}x${l.height}.${ext}`));
+  const savedFiles = await saveFileGroup(runtime.outputDir(), sourceStem(c.sourceName), layerFiles(layers, ext));
   const lines: string[] = [`Unpacked ${layers.length} ICO size(s):`];
   const media: ToolContent[] = [];
-  for (const { width, height, out } of layers) {
-    const saved = await writeMediaFile(dir, `${stem}-${width}x${height}.${ext}`, out);
+  for (const [i, { width, height, out }] of layers.entries()) {
+    const saved = savedFiles[i]!;
     lines.push(`  ${saved.path}`);
     if (c.outputMode === 'base64') {
       media.push({ type: 'image', data: out.toString('base64'), mimeType: mime });
@@ -496,11 +497,15 @@ async function saveUnpackedLayers(layers: UnpackedLayer[], spec: { ext: string; 
   return { content: [{ type: 'text', text: lines.join('\n') }, ...media] };
 }
 
-/** First of `stem`, `stem-2`, `stem-3`, … for which NO `<stem><suffix>` already exists in `dir`. */
-function freeSetStem(dir: string, stem: string, suffixes: string[]): string {
-  const taken = (s: string): boolean => suffixes.some((suffix) => existsSync(join(dir, `${s}${suffix}`)));
-  if (!taken(stem)) return stem;
-  for (let n = 2; ; n++) if (!taken(`${stem}-${n}`)) return `${stem}-${n}`;
+/** `-<WxH>.<ext>` per layer. A size repeated in one ICO (legacy icons hold e.g. 32x32 at two bit depths) gets `-<WxH>-2.<ext>`. */
+function layerFiles(layers: UnpackedLayer[], ext: string): { suffix: string; bytes: Buffer }[] {
+  const seen = new Map<string, number>();
+  return layers.map(({ width, height, out }) => {
+    const size = `${width}x${height}`;
+    const n = (seen.get(size) ?? 0) + 1;
+    seen.set(size, n);
+    return { suffix: n === 1 ? `-${size}.${ext}` : `-${size}-${n}.${ext}`, bytes: out };
+  });
 }
 
 /** Combine the content of several ToolResults into one (for batch array inputs). */

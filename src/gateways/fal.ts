@@ -135,7 +135,7 @@ export class FalGateway implements Gateway {
   /**
    * Reference semantics are strictly per-model on fal: Krea 2's
    * `image_style_references` transfers the reference's STYLE/medium, while the
-   * FLUX 2 Pro *Edit* endpoint's `image_urls` conditions on its SUBJECT. Every
+   * FLUX *Edit* endpoints' `image_urls` conditions on its SUBJECT. Every
    * other fal image model has no conditioning input at all.
    */
   referenceSemantics(model: string): ReferenceSemantics | null {

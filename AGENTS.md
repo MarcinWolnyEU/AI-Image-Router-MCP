@@ -182,8 +182,9 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
   (`alphaFloor`/`tta`/`hysteresisSeed`) stay off by default.
 - sharp resizes a raw 1-channel buffer into 3 channels: read the stride from
   `toBuffer({resolveWithObject:true}).info.channels`.
-- Hugging Face downloads also fetch the repo's `config.json`, because HF counts downloads from it and the user
-  wants model authors to see them. Don't add a download path that skips it.
+- Hugging Face downloads also send a `HEAD` for the repo's `config.json`, because HF counts downloads from it and
+  the user wants model authors to see them. Don't add a download path that skips it, and don't save the file
+  (nothing reads it, and `modelsDir: "."` would overwrite the app's own `config.json`).
 - Downloads stream through `stream.pipeline`. The cascade writes temp + rename, because an existing
   `-webgpu.onnx` is reused forever.
 - onnxruntime's native stderr warnings are benign (`logSeverityLevel: 3` suppresses most).
@@ -200,7 +201,8 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
 - sharp's default `fit` is `cover` (it crops), so downsizing uses `fit:'inside'`. ffmpeg mp4 output
   re-encodes audio to AAC (`-c:a copy` fails for PCM/Vorbis). ffmpeg/ffprobe on PATH are needed only for
   video work.
-- Magic bytes are authoritative: never trust a `content-type` or a data: URL's declared mime. Raw base64 is
+- Magic bytes are authoritative: never trust a `content-type`, a data: URL's declared mime or a URL's file
+  extension (a saved `z-download-` copy takes its extension from the bytes). Raw base64 is
   recognised by content before the path heuristic (`/` is a base64 character). `sniffImageMime` defaults to
   png, so never validate with it (use `detectImageMime`). Generation is refused unless **all** reference
   images resolve.

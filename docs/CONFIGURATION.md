@@ -26,7 +26,7 @@ Run it with `npx -p ai-image-router-mcp ai-image-router-mcp-configure` (or `npm 
 9. **fal safety settings** (fal only): whether to relax fal's safety checker. The default is no.
 10. **Tinify**: optional token for PNG compression and WebP/AVIF output.
 11. **Logging and output**: log policy (`none`, `today`, `persistent-daily`), output folder, inline previews.
-12. **Transport**: stdio (recommended) or HTTP, with an optional generated bearer token saved as `mcp http token.txt`.
+12. **Transport**: stdio (recommended) or HTTP, with an optional generated bearer token saved as `mcp http token.txt`. An existing file is kept. If the config names that file and it's missing, the wizard generates a new token, so clients need the new value.
 
 The result goes to `config.json` together with a `diagnostics` block that records any errors or missing data hit while pulling model lists. `health_status` shows it.
 
