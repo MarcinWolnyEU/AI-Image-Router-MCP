@@ -425,6 +425,23 @@ describe('isDeterministicFailure', () => {
     assert.equal(isDeterministicFailure(JSON.stringify({ error: { message: 'x' } })), false);
     assert.equal(isDeterministicFailure('<html>bad gateway</html>'), false);
   });
+  it('classifies every deterministic error_type, and no transient one', () => {
+    const body = (errorType: string) => JSON.stringify({ error: { message: 'x', metadata: { error_type: errorType } } });
+    const deterministic = [
+      'content_policy_violation', 'refusal', 'invalid_prompt', 'invalid_request', 'permission_denied', 'authentication', 'payment_required',
+      'context_length_exceeded', 'string_too_long', 'invalid_image', 'image_too_large', 'image_too_small', 'unsupported_image_format',
+    ];
+    const transient = ['rate_limit_exceeded', 'provider_overloaded', 'provider_unavailable', 'server', 'timeout', 'image_download_failed', 'unmapped'];
+    for (const t of deterministic) assert.equal(isDeterministicFailure(body(t)), true, t);
+    for (const t of transient) assert.equal(isDeterministicFailure(body(t)), false, t);
+  });
+  it('an error_type naming an Object.prototype member is neither deterministic nor labelled', () => {
+    const body = JSON.stringify({ error: { code: 400, message: 'odd', metadata: { error_type: 'constructor' } } });
+    assert.equal(isDeterministicFailure(body), false);
+    const e = explainOpenRouterError(400, body, MODEL);
+    assert.doesNotMatch(e.message, /function/);
+    assert.match(e.message, /HTTP 400 — Bad request.* — constructor\. odd/);
+  });
 });
 
 describe('background spec: native modes', () => {

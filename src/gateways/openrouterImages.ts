@@ -366,36 +366,44 @@ const STATUS_HINTS: Record<number, string[]> = {
   504: ['The upstream provider timed out: retry, or lower `quality`/size for a faster render.'],
 };
 
-/** Canonical `error_type` → short label (docs: "Typed Error Codes"). */
-const ERROR_TYPE_LABEL: Record<string, string> = {
-  context_length_exceeded: 'prompt too long for the model',
-  max_tokens_exceeded: 'output token limit reached',
-  token_limit_exceeded: 'OpenRouter token budget exceeded',
-  string_too_long: 'a request string exceeds the provider\'s per-field limit',
-  authentication: 'authentication failed',
-  permission_denied: 'permission denied / guardrail block',
-  payment_required: 'insufficient credits',
-  rate_limit_exceeded: 'rate limit exceeded',
-  provider_overloaded: 'provider temporarily overloaded',
-  provider_unavailable: 'provider returned an invalid or empty response',
-  invalid_request: 'invalid request parameter',
-  invalid_prompt: 'invalid prompt',
-  not_found: 'resource not found',
-  precondition_failed: 'precondition failed',
-  payload_too_large: 'request body too large',
-  unprocessable: 'request semantically unprocessable',
-  content_policy_violation: 'content policy violation (input or output flagged)',
-  refusal: 'the model refused the request',
-  invalid_image: 'a reference image is corrupt or unreadable',
-  image_too_large: 'a reference image exceeds the provider\'s size/pixel limit',
-  image_too_small: 'a reference image is below the provider\'s minimum dimensions',
-  unsupported_image_format: 'reference image format not supported by the provider',
-  image_not_found: 'a reference image URL/file could not be resolved',
-  image_download_failed: 'OpenRouter could not download a reference image URL',
-  server: 'internal server error (upstream message masked)',
-  timeout: 'provider timeout',
-  unmapped: 'unclassified upstream error',
+/**
+ * Canonical `error_type` (docs: "Typed Error Codes") → short label. `deterministic` marks the
+ * types that fail identically on a retry: content/prompt/account problems, not transient faults.
+ */
+const ERROR_TYPES: Record<string, { label: string; deterministic?: true }> = {
+  context_length_exceeded: { label: 'prompt too long for the model', deterministic: true },
+  max_tokens_exceeded: { label: 'output token limit reached' },
+  token_limit_exceeded: { label: 'OpenRouter token budget exceeded' },
+  string_too_long: { label: 'a request string exceeds the provider\'s per-field limit', deterministic: true },
+  authentication: { label: 'authentication failed', deterministic: true },
+  permission_denied: { label: 'permission denied / guardrail block', deterministic: true },
+  payment_required: { label: 'insufficient credits', deterministic: true },
+  rate_limit_exceeded: { label: 'rate limit exceeded' },
+  provider_overloaded: { label: 'provider temporarily overloaded' },
+  provider_unavailable: { label: 'provider returned an invalid or empty response' },
+  invalid_request: { label: 'invalid request parameter', deterministic: true },
+  invalid_prompt: { label: 'invalid prompt', deterministic: true },
+  not_found: { label: 'resource not found' },
+  precondition_failed: { label: 'precondition failed' },
+  payload_too_large: { label: 'request body too large' },
+  unprocessable: { label: 'request semantically unprocessable' },
+  content_policy_violation: { label: 'content policy violation (input or output flagged)', deterministic: true },
+  refusal: { label: 'the model refused the request', deterministic: true },
+  invalid_image: { label: 'a reference image is corrupt or unreadable', deterministic: true },
+  image_too_large: { label: 'a reference image exceeds the provider\'s size/pixel limit', deterministic: true },
+  image_too_small: { label: 'a reference image is below the provider\'s minimum dimensions', deterministic: true },
+  unsupported_image_format: { label: 'reference image format not supported by the provider', deterministic: true },
+  image_not_found: { label: 'a reference image URL/file could not be resolved' },
+  image_download_failed: { label: 'OpenRouter could not download a reference image URL' },
+  server: { label: 'internal server error (upstream message masked)' },
+  timeout: { label: 'provider timeout' },
+  unmapped: { label: 'unclassified upstream error' },
 };
+
+/** The table row for an `error_type`, own keys only (`constructor` is not an error type). */
+function errorTypeInfo(errorType: string): { label: string; deterministic?: true } | undefined {
+  return Object.hasOwn(ERROR_TYPES, errorType) ? ERROR_TYPES[errorType] : undefined;
+}
 
 /** Does a parsed JSON value look like an OpenRouter error object (message/code, or a Zod `name`)? */
 function looksLikeErrorObject(e: unknown): e is Record<string, unknown> {
@@ -427,23 +435,6 @@ export function isOpenRouterCreditLimit(bodyText: string, message = ''): boolean
   return /insufficient credits/i.test(message) && /openrouter\.ai\/settings\/credits/i.test(`${message} ${bodyText}`);
 }
 
-/** `error_type`s that fail identically on a retry: content/prompt/account problems, not transient faults. */
-const DETERMINISTIC_ERROR_TYPES = new Set([
-  'content_policy_violation',
-  'refusal',
-  'invalid_prompt',
-  'invalid_request',
-  'permission_denied',
-  'authentication',
-  'payment_required',
-  'context_length_exceeded',
-  'string_too_long',
-  'invalid_image',
-  'image_too_large',
-  'image_too_small',
-  'unsupported_image_format',
-]);
-
 /**
  * True when a failure body says retrying the same request cannot help: a
  * moderation flag (`metadata.reasons`) or a deterministic `error_type`. A 502
@@ -452,7 +443,7 @@ const DETERMINISTIC_ERROR_TYPES = new Set([
 export function isDeterministicFailure(bodyText: string): boolean {
   const meta = parseErrorBody(bodyText)?.metadata;
   if (Array.isArray(meta?.reasons) && meta.reasons.length > 0) return true;
-  return typeof meta?.error_type === 'string' && DETERMINISTIC_ERROR_TYPES.has(meta.error_type);
+  return typeof meta?.error_type === 'string' && errorTypeInfo(meta.error_type)?.deterministic === true;
 }
 
 /**
@@ -511,7 +502,7 @@ function moderationHint(meta: OpenRouterErrorBody['metadata']): string | null {
 
 /** "HTTP 502, <status meaning>, <error_type>: <label>" (parts omitted when unknown). */
 function errorHeadline(code: number | undefined, errorType: string | undefined): string {
-  const typeLabel = errorType ? ERROR_TYPE_LABEL[errorType] : undefined;
+  const typeLabel = errorType ? errorTypeInfo(errorType)?.label : undefined;
   return [code != null ? `HTTP ${code}` : null, code != null ? STATUS_TEXT[code] ?? null : null, typeLabel ? `${errorType}: ${typeLabel}` : errorType ?? null]
     .filter(Boolean)
     .join(' — ');

@@ -94,6 +94,14 @@ const IMAGENET_MEAN = [0.485, 0.456, 0.406] as const;
 const IMAGENET_STD = [0.229, 0.224, 0.225] as const;
 
 /**
+ * The BiRefNet architecture's shared contract: ImageNet mean/std, logits out (sigmoid), and
+ * WebGPU only through the cascaded variant. `usage` stays per model: it is measured, not derived.
+ */
+function birefnetFamily(spec: Omit<BgModelSpec, 'mean' | 'std' | 'needsSigmoid' | 'cascadeForWebgpu'>): BgModelSpec {
+  return { ...spec, mean: IMAGENET_MEAN, std: IMAGENET_STD, needsSigmoid: true, cascadeForWebgpu: true };
+}
+
+/**
  * rembg release assets (https://github.com/danielgatis/rembg releases, tag v0.0.0).
  *
  * `usage` is empirical (Windows 11, RTX 5070 Ti 16 GB, onnxruntime-node 1.26) via
@@ -103,7 +111,7 @@ const IMAGENET_STD = [0.229, 0.224, 0.225] as const;
  * only the lighter IS-Net (`isnet-general-use`) runs on the GPU providers.
  */
 export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
-  'birefnet-general': {
+  'birefnet-general': birefnetFamily({
     key: 'birefnet-general',
     label: 'BiRefNet general',
     blurb: 'High-quality general matting. Free for commercial use, Chinese research project.',
@@ -111,17 +119,13 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
     filename: 'birefnet-general.onnx',
     hash: { algo: 'md5', value: '7a35a0141cbbc80de11d9c9a28f52697' },
     approxMB: 928,
-    mean: IMAGENET_MEAN,
-    std: IMAGENET_STD,
-    needsSigmoid: true,
-    cascadeForWebgpu: true,
     usage: {
       cpu: { runs: true, ramMB: 7680 },
       dml: { runs: false, ramMB: 1536, note: 'DirectML cannot run the deformable-conv ASPP node (E_OUTOFMEMORY).' },
       webgpu: { runs: true, ramMB: 1536, note: 'Runs via an auto-generated cascaded variant (cascade-wide-ops); ~8 s.' },
     },
-  },
-  'birefnet-massive': {
+  }),
+  'birefnet-massive': birefnetFamily({
     key: 'birefnet-massive',
     label: 'BiRefNet massive',
     blurb: 'BiRefNet trained on a larger dataset. Free for commercial use, Chinese research project.',
@@ -129,33 +133,29 @@ export const BG_MODELS: Record<BgModelKey, BgModelSpec> = {
     filename: 'birefnet-massive.onnx',
     hash: { algo: 'md5', value: '33e726a2136a3d59eb0fdf613e31e3e9' },
     approxMB: 973,
-    mean: IMAGENET_MEAN,
-    std: IMAGENET_STD,
-    needsSigmoid: true,
-    cascadeForWebgpu: true,
     usage: {
       cpu: { runs: true, ramMB: 7680 },
       dml: { runs: false, ramMB: 1536, note: 'DirectML cannot run a fused BiRefNet node (E_OUTOFMEMORY).' },
       webgpu: { runs: true, ramMB: 1536, note: 'Runs via an auto-generated cascaded variant (cascade-wide-ops); ~7 s.' },
     },
-  },
+  }),
   'bria-rmbg': {
-    key: 'bria-rmbg',
-    label: 'BRIA RMBG-2.0',
-    blurb: 'Model for non-commercial use (CC BY-NC 4.0) from Israeli company Bria AI, state of the art for general use',
-    url: 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/bria-rmbg-2.0.onnx',
-    filename: 'bria-rmbg-2.0.onnx',
-    hash: { algo: 'sha256', value: '5b486f08200f513f460da46dd701db5fbb47d79b4be4b708a19444bcd4e79958' },
-    approxMB: 977,
-    mean: IMAGENET_MEAN,
-    std: IMAGENET_STD,
+    ...birefnetFamily({
+      key: 'bria-rmbg',
+      label: 'BRIA RMBG-2.0',
+      blurb: 'Model for non-commercial use (CC BY-NC 4.0) from Israeli company Bria AI, state of the art for general use',
+      url: 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/bria-rmbg-2.0.onnx',
+      filename: 'bria-rmbg-2.0.onnx',
+      hash: { algo: 'sha256', value: '5b486f08200f513f460da46dd701db5fbb47d79b4be4b708a19444bcd4e79958' },
+      approxMB: 977,
+      usage: {
+        cpu: { runs: true, ramMB: 7680 },
+        dml: { runs: false, ramMB: 1024, note: 'DirectML cannot run a fused BiRefNet node (E_OUTOFMEMORY).' },
+        webgpu: { runs: true, ramMB: 1536, note: 'Runs via an auto-generated cascaded variant (cascade-wide-ops); ~7.6 s.' },
+      },
+    }),
+    // BiRefNet-based, but bria's export already emits a 0..1 map, not logits.
     needsSigmoid: false,
-    cascadeForWebgpu: true,
-    usage: {
-      cpu: { runs: true, ramMB: 7680 },
-      dml: { runs: false, ramMB: 1024, note: 'DirectML cannot run a fused BiRefNet node (E_OUTOFMEMORY).' },
-      webgpu: { runs: true, ramMB: 1536, note: 'Runs via an auto-generated cascaded variant (cascade-wide-ops); ~7.6 s.' },
-    },
   },
   'isnet-general-use': {
     key: 'isnet-general-use',

@@ -310,11 +310,12 @@ The quality gates, all run in CI:
 npm run typecheck                 # tsc --noEmit, strict
 npm run build                     # tsc -> dist/
 npm test                          # unit + integration:nonpayment, no network, no cost
+npm run trellis                   # structural-debt audit; fails above sloppiness index 0
 ```
 
 - `npm run unit` runs the pure unit tests. `npm run integration:nonpayment` runs the real subsystems (sharp, ffmpeg, gifenc, the MCP tool handlers over an in-memory transport) against fake gateways.
 - `npm run integration:paid` runs live tests that call real, billed APIs (`tests/paid/`). It needs tokens and costs money, so it never runs in CI or in `npm test`.
-- `npm run trellis` audits structural debt (complexity, duplication, import cycles). It needs [Bun](https://bun.sh/) on the `PATH`.
+- `npm run trellis` runs [trellis](https://github.com/jayminwest/trellis), an offline audit of complex functions, duplicated code and import cycles. The limit lives in `trellis.yaml`; the project is at 0/100. It needs [Bun](https://bun.sh/) on the `PATH`.
 - Helper scripts for poking at a gateway or spawning the server as a client are in `scripts/`.
 
 Start with [CLAUDE.md](CLAUDE.md) if you are working on the code, or point your coding agent at it. It holds the architecture, conventions and the hard-won gotchas. [docs/API-NOTES.md](docs/API-NOTES.md) has the exact gateway contracts, and [docs/UPDATING-LEADERBOARDS.md](docs/UPDATING-LEADERBOARDS.md) explains how the wizard's model rankings are refreshed.
@@ -323,7 +324,7 @@ The project is built primarily with [Pi](https://github.com/earendil-works/pi) a
 
 ## Contributing
 
-Open an issue before starting anything non-trivial, and keep each change small. Open a [pull request](https://github.com/MarcinWolnyEU/ai-image-router-mcp/pulls), make sure `npm run typecheck` and `npm test` pass, and describe **why** the change is needed and what **risks** it carries. Add or update tests that would fail if the code were wrong. Do not commit tokens, config files or absolute local paths.
+Open an issue before starting anything non-trivial, and keep each change small. Open a [pull request](https://github.com/MarcinWolnyEU/ai-image-router-mcp/pulls), make sure `npm run typecheck`, `npm test` and `npm run trellis` pass, and describe **why** the change is needed and what **risks** it carries. Add or update tests that would fail if the code were wrong. Do not commit tokens, config files or absolute local paths.
 
 Pull requests are reviewed personally and answered within 2 weeks.
 

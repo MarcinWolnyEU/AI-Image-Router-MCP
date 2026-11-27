@@ -17,7 +17,7 @@ npm run dev                # run from source (tsx src/index.ts)
 npm run typecheck          # tsc --noEmit; must stay clean after every edit
 npm test                   # unit + integration:nonpayment (node:test via tsx; no network, no cost)
 npm run integration:paid   # live, billed API tests in tests/paid/; never part of npm test
-npm run trellis            # structural-debt audit (read-only, offline); needs Bun on PATH
+npm run trellis            # structural-debt audit (offline; a CI gate at index 0); needs Bun on PATH
 npm run configure          # interactive wizard -> config.json
 npm start                  # stdio;  npm start -- --http  for Streamable HTTP
 ```
@@ -100,8 +100,9 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
   init that finishes after a restart is stale and must not install itself.
 - **Read ONNX outputs through `tensorToFloat32`** (`birefnet.ts`), never cast to `Float32Array`:
   onnxruntime-node returns an fp16 output as a `Uint16Array` of raw bits (this was the BEN2 "seams" bug).
-- **Keep `npm run trellis` low**: cyclomatic complexity > 10 counts as an eroded function, so split a growing
-  handler into named steps (validate → resolve → submit → render).
+- **`npm run trellis` must stay at 0** (CI fails above `trellis.yaml`'s `maxIndex: 0`). Cyclomatic complexity
+  > 10 counts as an eroded function, so split a growing handler into named steps (validate → resolve → submit →
+  render). A 100-token normalized repeat is a clone group, and a long run of same-shape table rows counts too.
 
 ## Gotchas
 

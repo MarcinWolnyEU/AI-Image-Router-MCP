@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `npm run typecheck` and `npm test` pass.
+- [ ] `npm run typecheck`, `npm test` and `npm run trellis` pass.
 - [ ] Tests assert behavior (they would fail if the code were wrong), not just execute lines.
 - [ ] No test or script makes a paid API call unless it lives in `tests/paid/`.
 - [ ] README, `docs/API-NOTES.md` and `CLAUDE.md` are updated if a tool, config field or gateway contract changed.
