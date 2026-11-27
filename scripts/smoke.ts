@@ -5,21 +5,14 @@
  *   npx tsx scripts/smoke.ts listvideo <gateway>
  * <gateway> = openrouter | mistral | edenai
  */
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Logger } from '../src/logging/logger.js';
 import { createGateway } from '../src/gateways/registry.js';
-import type { GatewayId } from '../src/config/schema.js';
+import { DEFAULT_TOKEN_FILES, resolveApiKey, type GatewayId } from '../src/config/schema.js';
 import { saveMedia, extFromMime } from '../src/util/files.js';
 import { findProjectRoot } from './root.mjs';
 
 const ROOT = findProjectRoot(import.meta.url);
-const TOKEN_FILES: Record<string, string> = {
-  openrouter: 'openrouter token.txt',
-  mistral: 'mistral ai token.txt',
-  edenai: 'eden ai token.txt',
-  fal: 'fal ai token.txt',
-};
 
 function log(...a: unknown[]) {
   console.error(...a);
@@ -79,7 +72,8 @@ async function main() {
   if (!cmd || !gwId) throw new Error('usage: smoke.ts <cmd> <gateway> [...]');
   const logger = new Logger('none', 'logs');
   await logger.init();
-  const token = readFileSync(join(ROOT, TOKEN_FILES[gwId]!), 'utf8').trim();
+  // Shape-checked like the server's own keys, so a token file pointing at the wrong file is not sent.
+  const token = await resolveApiKey({ type: 'file', value: join(ROOT, DEFAULT_TOKEN_FILES[gwId as GatewayId]) });
   log(`[${gwId}] token length=${token.length}`);
   const gw = createGateway(gwId as GatewayId, token, logger);
 

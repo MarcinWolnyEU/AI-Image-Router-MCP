@@ -6,8 +6,9 @@
  *   npx tsx scripts/video-test.ts eden-t2v <model> <provider>   # Eden text-to-video
  *   npx tsx scripts/video-test.ts or-t2v <model>           # OpenRouter text-to-video
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEFAULT_TOKEN_FILES, resolveApiKey } from '../src/config/schema.js';
 import { Logger } from '../src/logging/logger.js';
 import { createGateway } from '../src/gateways/registry.js';
 import { resolveImageInput } from '../src/util/inputs.js';
@@ -16,7 +17,8 @@ import type { ReferenceImage, VideoGenParams } from '../src/gateways/types.js';
 import { findProjectRoot } from './root.mjs';
 
 const ROOT = findProjectRoot(import.meta.url);
-const tokenOf = (f: string) => readFileSync(join(ROOT, f), 'utf8').trim();
+/** A gateway key from its token file in the project root, shape-checked like the server's own. */
+const tokenOf = (f: string) => resolveApiKey({ type: 'file', value: join(ROOT, f) });
 
 function pickReferenceImage(): string {
   const dir = join(ROOT, 'output');
@@ -30,7 +32,7 @@ function pickReferenceImage(): string {
 async function runVideo(gwId: 'openrouter' | 'edenai', params: VideoGenParams, label: string) {
   const logger = new Logger('none', 'logs');
   await logger.init();
-  const token = tokenOf(gwId === 'openrouter' ? 'openrouter token.txt' : 'eden ai token.txt');
+  const token = await tokenOf(DEFAULT_TOKEN_FILES[gwId]);
   const gw = createGateway(gwId, token, logger);
   console.error(`\n[${gwId}] ${params.kind} model=${params.model} provider=${params.edenProvider ?? '-'}`);
   const t = Date.now();
@@ -98,7 +100,7 @@ const JOBS: Record<string, (c: JobContext) => VideoJob> = {
 
 /** List OpenRouter's video models straight from the REST API (free). */
 async function probeOpenRouter(): Promise<void> {
-  const token = tokenOf('openrouter token.txt');
+  const token = await tokenOf(DEFAULT_TOKEN_FILES.openrouter);
   const res = await fetch('https://openrouter.ai/api/v1/models?output_modalities=video', {
     headers: { Authorization: `Bearer ${token}` },
   });

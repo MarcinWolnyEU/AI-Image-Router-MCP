@@ -26,6 +26,27 @@ import type {
 // result. The queue handles cold starts and load far better than the synchronous
 // `fal.run` path, and the same code drives both image and video. See docs/API-NOTES.md.
 const QUEUE_BASE = 'https://queue.fal.run';
+const QUEUE_ORIGIN = new URL(QUEUE_BASE).origin;
+
+/**
+ * Whether a URL from fal's submit response stays on the queue origin. `status_url`, `response_url`
+ * and `cancel_url` are requested with the API key, so one naming any other host would hand that
+ * host the key. A URL that passes is still used verbatim.
+ */
+function isQueueUrl(url: string): boolean {
+  try {
+    return new URL(url).origin === QUEUE_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A fal endpoint id: `owner/app[/path…]`, each segment URL-unreserved and not starting with a dot
+ * (`fal-ai/kling-video/v2.1/master/image-to-video`). The id comes from config or a tool call and is
+ * appended to the queue URL, so `../`, `?`, `#` or `%2F` could aim the (billed) POST elsewhere.
+ */
+const FAL_ENDPOINT_SHAPE = /^[\w~-][\w.~-]*(?:\/[\w~-][\w.~-]*)+$/;
 
 // No public programmatic model-list API; curated lists (the wizard lets the user
 // type any other fal endpoint id). Krea 2 (image) + NVIDIA Cosmos 3 (video) are the
@@ -267,6 +288,9 @@ export class FalGateway implements Gateway {
 
   /** Submit to the queue. Once this resolves, a (billable) job EXISTS on fal's side. */
   private async submitQueue(modelId: string, input: Record<string, unknown>, opts: QueueOpts): Promise<FalQueueHandle> {
+    if (!FAL_ENDPOINT_SHAPE.test(modelId)) {
+      throw new Error(`"${modelId.slice(0, 80)}" is not a fal endpoint id (owner/app, e.g. fal-ai/flux/dev). Nothing was submitted.`);
+    }
     let submit: FalSubmitResponse;
     try {
       submit = await postJson<FalSubmitResponse>(`${QUEUE_BASE}/${modelId}`, input, {
@@ -276,18 +300,38 @@ export class FalGateway implements Gateway {
     } catch (err) {
       throw annotateUnknownModel(err, modelId);
     }
+    const handle = this.queueHandle(modelId, submit);
+    opts.onProgress?.(submit.status ?? 'IN_QUEUE', { requestId: submit.request_id });
+    return handle;
+  }
+
+  /** The accepted job's URLs: both must be present and on the queue origin, because they are sent the key. */
+  private queueHandle(modelId: string, submit: FalSubmitResponse): FalQueueHandle {
     const statusUrl = submit.status_url;
     const responseUrl = submit.response_url;
     if (!statusUrl || !responseUrl) {
       throw new Error(`fal (${modelId}) did not return queue URLs: ${JSON.stringify(submit).slice(0, 200)}`);
     }
-    opts.onProgress?.(submit.status ?? 'IN_QUEUE', { requestId: submit.request_id });
+    if (!isQueueUrl(statusUrl) || !isQueueUrl(responseUrl)) {
+      throw new Error(
+        `fal (${modelId}) accepted the job (request_id ${submit.request_id ?? 'unknown'}) but returned queue URLs outside ${QUEUE_ORIGIN}. ` +
+          'The API key is sent to that origin only, so the job was not followed; it may still complete and be billed; check your fal dashboard.',
+      );
+    }
     return {
       statusUrl,
       responseUrl,
-      ...(submit.cancel_url ? { cancelUrl: submit.cancel_url } : {}),
+      ...this.usableCancelUrl(submit),
       ...(submit.request_id ? { requestId: submit.request_id } : {}),
     };
+  }
+
+  /** The cancel URL, unless it is off the queue origin: then it is dropped (and logged), so a timeout reports the job as not cancellable. */
+  private usableCancelUrl(submit: FalSubmitResponse): { cancelUrl?: string } {
+    if (!submit.cancel_url) return {};
+    if (isQueueUrl(submit.cancel_url)) return { cancelUrl: submit.cancel_url };
+    this.logger.warn('fal cancel_url is outside the queue origin; ignored', { requestId: submit.request_id });
+    return {};
   }
 
   /** Poll an accepted job until COMPLETED, then fetch its result payload. */
@@ -361,7 +405,7 @@ function cancelText(outcome: CancelOutcome): string {
     return `cancelling it ${outcome.kind === 'refused' ? 'was refused' : 'failed'} (${outcome.detail}), so it may still complete and be billed; check your fal dashboard`;
   }
   if (outcome.kind === 'cancelled') return 'it was CANCELLED via its cancel_url, so it should not be billed further';
-  return 'fal gave no cancel_url, so it may still complete and be billed; check your fal dashboard';
+  return 'fal gave no usable cancel_url, so it may still complete and be billed; check your fal dashboard';
 }
 
 interface QueueOpts {

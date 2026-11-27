@@ -1,6 +1,7 @@
 import { runtime } from '../state/runtime.js';
 import { describeImage, ensurePng, extFromMime, imageInfo, makeImagePreview, mediaStem, saveMedia, writeMediaFile, type SavedFile } from '../util/files.js';
 import { tinifyCompress, tinifyConvert } from '../media/tinify.js';
+import { detectImageMime } from '../util/mime.js';
 import { ICO_MIME } from '../media/ico.js';
 import type { GeneratedImage, ImageGenResult } from '../gateways/types.js';
 import type { ImageJobMediaOpts, JobRenderer } from '../state/generationJobs.js';
@@ -195,8 +196,13 @@ async function createSaveContext(img: GeneratedImage, opts: RenderOpts): Promise
   };
 }
 
-/** Save one generated image, applying optimization/conversion when configured. */
-async function processImage(img: GeneratedImage, idx: number, opts: RenderOpts): Promise<{ lines: string[]; content: ToolContent[] }> {
+/**
+ * Save one generated image, applying optimization/conversion when configured. The bytes name
+ * their type, not the provider's label (fal's `content_type`, OpenRouter's `media_type`): JPEG
+ * bytes labelled `image/png` would otherwise be saved as `.png` and described as a PNG.
+ */
+async function processImage(delivered: GeneratedImage, idx: number, opts: RenderOpts): Promise<{ lines: string[]; content: ToolContent[] }> {
+  const img: GeneratedImage = { ...delivered, mimeType: detectImageMime(delivered.bytes) ?? delivered.mimeType };
   const ctx = await createSaveContext(img, opts);
   if (opts.format === 'ico') {
     await saveAsIco(ctx, img, idx, opts);
@@ -216,7 +222,7 @@ async function saveAsIco(ctx: SaveContext, img: GeneratedImage, idx: number, opt
   const { dir, lines, content, previewMaxBytes } = ctx;
   const size = opts.icoSize ?? 256;
   const stem = mediaStem(opts.label);
-  const sourcePng = await ensurePng(img.bytes, img.mimeType);
+  const sourcePng = await ensurePng(img.bytes);
   const fitted = await fitSquare(sourcePng, 'image/png', size, {
     fit: opts.squareFit ?? 'pad',
     ...(opts.padColor ? { background: opts.padColor } : {}),
@@ -265,7 +271,7 @@ async function saveOptimized(
   tinifyKey: string,
 ): Promise<void> {
   const stem = mediaStem(opts.label);
-  const sourcePng = await ensurePng(img.bytes, img.mimeType);
+  const sourcePng = await ensurePng(img.bytes);
   try {
     if (format === 'png') {
       await saveCompressedPng(ctx, sourcePng, idx, opts, stem, tinifyKey);
@@ -281,7 +287,7 @@ async function saveOptimized(
 }
 
 async function saveCompressedPng(ctx: SaveContext, sourcePng: Buffer, idx: number, opts: RenderOpts, stem: string, tinifyKey: string): Promise<void> {
-  const compressed = await tinifyCompress(tinifyKey, sourcePng, opts.signal);
+  const compressed = await tinifyCompress(tinifyKey, sourcePng, 'image/png', opts.signal);
   if (!opts.save) {
     await ctx.previewOnly(compressed, 'image/png');
     return;

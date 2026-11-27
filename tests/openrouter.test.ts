@@ -292,6 +292,20 @@ describe('OpenRouterGateway.generateImage over a stubbed fetch', () => {
     assert.equal(g.imageBackgroundModes('x/unknown'), null);
   });
 
+  it('a model id that is not author/slug never reaches a request URL (static defaults apply)', async () => {
+    responder = () => ({ status: 200, json: { data: { endpoints: [] } } });
+    const g = new OpenRouterGateway('sk-or-v1-test-token-0123456789abcdef', silentLogger);
+    for (const bad of ['../credits', 'openai/gpt-image-1/../../key', 'openai/gpt?x=1', 'openai/gpt#frag', 'openai%2Fgpt', 'openai/.hidden', 'openai/gpt image']) {
+      assert.equal(await g.fetchImageCapabilities(bad), null, bad);
+    }
+    assert.equal(requests.length, 0);
+    await g.fetchImageCapabilities('google/gemini-2.5-flash-image-preview:free');
+    assert.deepEqual(
+      requests.map((r) => r.url),
+      ['https://openrouter.ai/api/v1/images/models/google/gemini-2.5-flash-image-preview:free/endpoints'],
+    );
+  });
+
   it('refuses transparent BEFORE any request (nothing billed)', async () => {
     responder = () => ok();
     await assert.rejects(gw().generateImage(base({ background: 'transparent' })), /cannot produce a transparent background/);

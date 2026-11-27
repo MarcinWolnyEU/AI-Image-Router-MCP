@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
+import { detectImageMime } from './mime.js';
 
 export function slugify(input: string, max = 40): string {
   const s = input
@@ -29,11 +30,17 @@ const MIME_EXT: Record<string, string> = {
   'image/bmp': 'bmp',
   'image/tiff': 'tiff',
   'image/heic': 'heic',
+  'image/heif': 'heif',
   'video/mp4': 'mp4',
   'video/webm': 'webm',
   'video/quicktime': 'mov',
   'video/x-matroska': 'mkv',
   'video/x-msvideo': 'avi',
+  'video/x-flv': 'flv',
+  'video/ogg': 'ogv',
+  'video/x-ms-asf': 'wmv',
+  'video/mpeg': 'mpg',
+  'video/mp2t': 'ts',
 };
 
 export function extFromMime(mime: string, fallback = 'bin'): string {
@@ -197,10 +204,29 @@ export async function writeMediaFile(dir: string, filename: string, bytes: Buffe
   return { path, filename, uri: pathToFileURL(path).href, bytes: bytes.length };
 }
 
-/** Ensure bytes are PNG (convert via sharp if they aren't already). */
-export async function ensurePng(bytes: Buffer, mimeType: string): Promise<Buffer> {
-  if (mimeType.toLowerCase() === 'image/png') return bytes;
+/**
+ * Ensure bytes are PNG, re-encoding with sharp when they aren't. The bytes decide, not a declared
+ * mime: a provider's `content_type` or a file's extension can say PNG over JPEG bytes, which would
+ * then be saved (and Tinify-compressed, format-preserving) under a `.png` name.
+ */
+export async function ensurePng(bytes: Buffer): Promise<Buffer> {
+  if (detectImageMime(bytes) === 'image/png') return bytes;
   return sharp(bytes).png().toBuffer();
+}
+
+/** How much of a file identifies it: `detectMedia`'s longest check (three MPEG-TS packets) needs 380 bytes. */
+const SNIFF_BYTES = 512;
+
+/** The first bytes of a file, enough for `detectMedia`, without reading the rest (a video can be gigabytes). */
+export async function readFileHead(path: string): Promise<Buffer> {
+  const handle = await open(path, 'r');
+  try {
+    const buf = Buffer.alloc(SNIFF_BYTES);
+    const { bytesRead } = await handle.read(buf, 0, SNIFF_BYTES, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await handle.close().catch(() => {});
+  }
 }
 
 export interface DecodedDataUrl {

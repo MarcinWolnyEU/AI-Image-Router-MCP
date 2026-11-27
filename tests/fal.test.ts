@@ -122,6 +122,18 @@ describe('fal job that never finishes / unknown model / unsupported inputs', () 
     assert.equal(submits.length, 1, 'never resubmitted');
   });
 
+  it('an endpoint id that is not owner/app never reaches the queue URL (nothing is submitted)', async () => {
+    stub({ submit: accepted, status: json(200, { status: 'COMPLETED' }), result: json(200, { video: { url: VIDEO_URL } }) });
+    const gw = new FalGateway('id:secret', logger, FAST);
+    for (const bad of ['../fal-ai/x', 'fal-ai/x/../../y', 'fal-ai/x?debug=1', 'fal-ai/x#f', 'fal-ai%2Fx', 'fal-ai/.hidden', 'fal-ai/x y', 'nomodel']) {
+      await assert.rejects(gw.generateVideo({ ...params(), model: bad }), /not a fal endpoint id/, bad);
+    }
+    assert.equal(submits.length, 0);
+    const out = await gw.generateVideo({ ...params(), model: 'fal-ai/kling-video/v2.1/master/image-to-video' });
+    assert.equal(out.videos[0]?.sourceUrl, VIDEO_URL);
+    assert.equal(submits.length, 1);
+  });
+
   it('when the cancel answers ALREADY_COMPLETED, the finished (paid) result is collected instead of failing', async () => {
     stub({ submit: accepted, status: json(200, { status: 'IN_PROGRESS' }), result: json(200, { video: { url: VIDEO_URL } }), cancel: json(400, { status: 'ALREADY_COMPLETED' }) });
     const out = await new FalGateway('id:secret', logger, FAST).generateVideo(params());
@@ -153,6 +165,43 @@ describe('fal job that never finishes / unknown model / unsupported inputs', () 
     await assert.rejects(gw.generateVideo(i2v), /Nothing was submitted/);
     assert.equal(submits.length, 0);
     assert.equal(await gw.checkVideoRequest({ ...i2v, references: [{ ...png, role: 'first_frame' }] }), null);
+  });
+});
+
+describe('the fal key is only sent to the queue origin', () => {
+  /** Answer every request and record its URL, with `submit` as the submit response body. */
+  function recordQueue(submit: Record<string, unknown>, status: string): string[] {
+    const requested: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      requested.push(String(input));
+      if (init?.method === 'POST') return json(200, { request_id: 'r1', status_url: STATUS_URL, response_url: RESPONSE_URL, cancel_url: CANCEL_URL, ...submit })();
+      return json(200, { status, video: { url: VIDEO_URL } })();
+    }) as typeof fetch;
+    return requested;
+  }
+
+  it('a status_url or response_url on another host is not followed: only the submit is sent, and the error names the accepted job', async () => {
+    const foreign = [
+      { status_url: 'https://evil.example/fal-ai/kling-video/requests/r1/status' },
+      { response_url: 'https://queue.fal.run.evil.example/fal-ai/kling-video/requests/r1' },
+      { status_url: 'http://queue.fal.run/fal-ai/kling-video/requests/r1/status' },
+      { response_url: '/fal-ai/kling-video/requests/r1' },
+    ];
+    for (const submit of foreign) {
+      const requested = recordQueue(submit, 'COMPLETED');
+      await assert.rejects(
+        new FalGateway('id:secret', logger, FAST).generateVideo(params()),
+        (e: Error) => /request_id r1/.test(describeError(e)) && /outside https:\/\/queue\.fal\.run/.test(describeError(e)) && /may still complete and be billed/.test(describeError(e)),
+        JSON.stringify(submit),
+      );
+      assert.deepEqual(requested, [`https://queue.fal.run/${MODEL}`], JSON.stringify(submit));
+    }
+  });
+
+  it('a cancel_url on another host is never called: the timeout says the job could not be cancelled', async () => {
+    const requested = recordQueue({ cancel_url: 'https://evil.example/fal-ai/kling-video/requests/r1/cancel' }, 'IN_PROGRESS');
+    await assert.rejects(new FalGateway('id:secret', logger, FAST).generateVideo(params()), /request_id r1.*no usable cancel_url, so it may still complete and be billed/);
+    assert.ok(requested.length > 1 && requested.every((url) => url.startsWith('https://queue.fal.run/')), requested.join(', '));
   });
 });
 

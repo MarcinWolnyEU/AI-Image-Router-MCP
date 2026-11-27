@@ -27,14 +27,13 @@ from `npm test`** (which runs `unit` then `integration:nonpayment`).
 ## Example
 
 ```ts
-import { readFileSync } from 'node:fs';
 import { Logger } from '../src/logging/logger.js';
 import { createGateway } from '../src/gateways/registry.js';
-import { DEFAULT_TOKEN_FILES } from '../src/config/schema.js';
+import { DEFAULT_TOKEN_FILES, resolveApiKey } from '../src/config/schema.js';
 
 const logger = new Logger('none', 'logs');
-const token = process.env.FAL_TOKEN ?? readFileSync(DEFAULT_TOKEN_FILES.fal, 'utf8').trim();
-if (!token) throw new Error('fal token missing; set FAL_TOKEN or create "fal ai token.txt"');
+// resolveApiKey shape-checks the key like the server does, and throws when there is none.
+const token = await resolveApiKey(process.env.FAL_TOKEN ? { type: 'env', value: 'FAL_TOKEN' } : { type: 'file', value: DEFAULT_TOKEN_FILES.fal });
 const gw = createGateway('fal', token, logger);
 // ...gw.generateImage({...}) assertions...
 ```

@@ -199,7 +199,7 @@ export class EdenAiGateway implements Gateway {
       timeoutMessage: `Eden AI video job ${jobId} timed out after 15 minutes.`,
       step: async () => {
         const data = await getJson<Record<string, unknown>>(
-          `${BASE}/v2/video/generation_async/${jobId}/?response_as_dict=true&show_base_64=false&show_original_response=false`,
+          `${BASE}/v2/video/generation_async/${encodeURIComponent(jobId)}/?response_as_dict=true&show_base_64=false&show_original_response=false`,
           { headers: this.headers(), signal: params.signal },
         );
         const top = String((data['status'] as string) ?? '').toLowerCase();

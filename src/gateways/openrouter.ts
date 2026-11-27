@@ -39,6 +39,19 @@ const CAPS_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 /** …and refreshed in the background once it is older than an hour. */
 const CAPS_CACHE_REFRESH_MS = 60 * 60_000;
 
+/**
+ * An OpenRouter model id: `author/slug`, optionally `:variant`, of URL-unreserved characters,
+ * with no segment starting with a dot. Ids come from config or a tool call and go into a URL
+ * path, so anything else (`../`, `?`, `#`, `%2F`) could point the request at another endpoint.
+ */
+const MODEL_ID_SHAPE = /^[\w~-][\w.~-]*\/[\w~-][\w.:~-]*$/;
+
+/** `${BASE}/<collection>/<model>/endpoints`; throws for an id that isn't `MODEL_ID_SHAPE`. */
+function modelEndpointsUrl(collection: 'images/models' | 'models', model: string): string {
+  if (!MODEL_ID_SHAPE.test(model)) throw new Error(`"${model.slice(0, 80)}" is not an OpenRouter model id (author/slug), so it was not put in a request URL.`);
+  return `${BASE}/${collection}/${model}/endpoints`;
+}
+
 // Documented /images enums (https://openrouter.ai/docs/.../image-generation).
 const OPENROUTER_ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 const OPENROUTER_ASPECT_RATIOS_TALL = ['1:4', '4:1', '1:8', '8:1']; // some image models accept these extremes
@@ -135,7 +148,7 @@ export class OpenRouterGateway implements Gateway {
     if (inflight) return inflight;
     const task = (async () => {
       try {
-        const json = await getJson<unknown>(`${BASE}/images/models/${model}/endpoints`, {
+        const json = await getJson<unknown>(modelEndpointsUrl('images/models', model), {
           headers: this.headers(),
           retries: 1,
           timeoutMs: 10_000,
@@ -414,7 +427,7 @@ export class OpenRouterGateway implements Gateway {
     const videos: GeneratedVideo[] = [];
     for (let i = 0; i < Math.max(urls.length, 1); i++) {
       try {
-        const bytes = await getBytes(`${BASE}/videos/${id}/content?index=${i}`, {
+        const bytes = await getBytes(`${BASE}/videos/${encodeURIComponent(id)}/content?index=${i}`, {
           headers: this.headers(),
           signal,
           timeoutMs: 300_000,
@@ -472,7 +485,7 @@ export class OpenRouterGateway implements Gateway {
   private async providerLabelFor(model: string): Promise<string> {
     try {
       const data = await getJson<{ data?: { endpoints?: Array<{ provider_name?: string }> } }>(
-        `${BASE}/models/${model}/endpoints`,
+        modelEndpointsUrl('models', model),
         { headers: this.headers(), retries: 0, timeoutMs: 10_000 },
       );
       const names = [...new Set((data.data?.endpoints ?? []).map((e) => e.provider_name).filter((n): n is string => !!n))];
@@ -556,7 +569,7 @@ export class OpenRouterGateway implements Gateway {
       signal: params.signal,
       timeoutMessage: `OpenRouter video job ${id} timed out after 15 minutes.`,
       step: async () => {
-        const status = await getJson<ORVideoStatus>(`${BASE}/videos/${id}`, {
+        const status = await getJson<ORVideoStatus>(`${BASE}/videos/${encodeURIComponent(id)}`, {
           headers: this.headers(),
           signal: params.signal,
         });

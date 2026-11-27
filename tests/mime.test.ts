@@ -6,8 +6,11 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import sharp from 'sharp';
-import { detectMedia, detectImageMime, sniffImageMime } from '../src/util/mime.js';
+import { detectMedia, detectImageMime, isIcoSignature, sniffImageMime } from '../src/util/mime.js';
 import { resolveMediaInput } from '../src/util/inputs.js';
 import { buildIco, icoImageFromPng } from '../src/media/ico.js';
 
@@ -21,6 +24,9 @@ function ftyp(major: string, compatible: string[] = []): Buffer {
   compatible.forEach((b, i) => box.write(b, 16 + 4 * i, 'latin1'));
   return box;
 }
+
+/** A video detection: the container's mime and the ffmpeg demuxer forced for it. */
+const V = (mime: string, demuxer: string) => ({ kind: 'video', mime, demuxer });
 
 const solid = () => sharp({ create: { width: 8, height: 8, channels: 3, background: '#336699' } });
 
@@ -60,18 +66,98 @@ describe('detectMedia: images', () => {
 
 describe('detectMedia: video', () => {
   it('mp4 / quicktime ftyp brands are video', () => {
-    assert.deepEqual(detectMedia(ftyp('isom', ['isom', 'iso2', 'avc1', 'mp41'])), { kind: 'video', mime: 'video/mp4' });
-    assert.deepEqual(detectMedia(ftyp('qt  ', ['qt  '])), { kind: 'video', mime: 'video/quicktime' });
+    assert.deepEqual(detectMedia(ftyp('isom', ['isom', 'iso2', 'avc1', 'mp41'])), V('video/mp4', 'mov'));
+    assert.deepEqual(detectMedia(ftyp('qt  ', ['qt  '])), V('video/quicktime', 'mov'));
   });
 
   it('EBML: webm vs matroska by doctype; RIFF AVI', () => {
     const ebml = (doctype: string) => Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x82, 0x84]), Buffer.from(doctype, 'latin1'), Buffer.alloc(16)]);
-    assert.deepEqual(detectMedia(ebml('webm')), { kind: 'video', mime: 'video/webm' });
-    assert.deepEqual(detectMedia(ebml('matroska')), { kind: 'video', mime: 'video/x-matroska' });
+    assert.deepEqual(detectMedia(ebml('webm')), V('video/webm', 'matroska'));
+    assert.deepEqual(detectMedia(ebml('matroska')), V('video/x-matroska', 'matroska'));
     const avi = Buffer.alloc(16);
     avi.write('RIFF', 0, 'latin1');
     avi.write('AVI ', 8, 'latin1');
-    assert.deepEqual(detectMedia(avi), { kind: 'video', mime: 'video/x-msvideo' });
+    assert.deepEqual(detectMedia(avi), V('video/x-msvideo', 'avi'));
+  });
+
+  it('other movie containers: FLV, Ogg, ASF, MPEG-PS, MPEG-TS, and ftyp-less QuickTime', () => {
+    const pad = (head: number[]) => Buffer.concat([Buffer.from(head), Buffer.alloc(32)]);
+    assert.deepEqual(detectMedia(pad([0x46, 0x4c, 0x56, 0x01, 0x05])), V('video/x-flv', 'flv'));
+    assert.deepEqual(detectMedia(pad([0x4f, 0x67, 0x67, 0x53, 0x00])), V('video/ogg', 'ogg'));
+    assert.deepEqual(detectMedia(pad([0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11])), V('video/x-ms-asf', 'asf'));
+    assert.deepEqual(detectMedia(pad([0x00, 0x00, 0x01, 0xba])), V('video/mpeg', 'mpeg'));
+    assert.deepEqual(detectMedia(pad([0x00, 0x00, 0x01, 0xb3])), V('video/mpeg', 'mpegvideo'), 'an elementary stream has its own demuxer');
+    const ts = Buffer.alloc(564);
+    for (const o of [0, 188, 376]) {
+      ts[o] = 0x47;
+      ts[o + 3] = 0x10; // payload only, unscrambled
+    }
+    assert.deepEqual(detectMedia(ts), V('video/mp2t', 'mpegts'));
+    const moov = Buffer.alloc(32);
+    moov.writeUInt32BE(32, 0);
+    moov.write('moov', 4, 'latin1');
+    assert.deepEqual(detectMedia(moov), V('video/quicktime', 'mov'));
+  });
+
+  it('a lone 0x47 byte, text that merely starts like a signature, or a playlist is not a video', () => {
+    assert.equal(detectMedia(Buffer.from('G'.repeat(400))), null);
+    assert.equal(detectMedia(Buffer.from('FLVxyz not a flv header')), null);
+    assert.equal(detectMedia(Buffer.from('#EXTM3U\n#EXTINF:10,\nfile:///etc/passwd\n')), null);
+  });
+
+  it('no video signature can be met by text: Ogg, MPEG-TS and AVI need a binary byte', () => {
+    const mpd = '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"><BaseURL>C:/private/clip.mp4</BaseURL></MPD>';
+    assert.equal(detectMedia(Buffer.from(`OggS ${mpd}`)), null, '"OggS" alone is printable');
+    // "G" every 188 bytes with a printable 4th byte (`1` = adaptation 11, unscrambled) passes the packet checks.
+    const text = Buffer.from(' '.repeat(564));
+    for (const o of [0, 188, 376]) text.write('G 01', o, 'latin1');
+    assert.equal(detectMedia(text), null, 'printable TS packet headers');
+    assert.equal(detectMedia(Buffer.from(`RIFFAAAAAVI LISTAAAAhdrl ${mpd}`)), null, 'a printable RIFF size and LIST chunk');
+  });
+
+  /** A QuickTime atom header: the 4 size bytes, the type, then whatever follows. */
+  const atom = (size: number[], type: string, rest: number[] = []) => Buffer.concat([Buffer.from(size), Buffer.from(type, 'latin1'), Buffer.from(rest), Buffer.alloc(24)]);
+  const QUICKTIME = V('video/quicktime', 'mov');
+
+  it('ftyp-less QuickTime: 64-bit, to-end-of-file and large first atoms, and a pnot preview', () => {
+    assert.deepEqual(detectMedia(atom([0, 0, 0, 1], 'mdat', [0, 0, 0, 1, 0x40, 0, 0, 0])), QUICKTIME, 'size 1: a 64-bit size follows (a >4 GB capture)');
+    assert.deepEqual(detectMedia(atom([0, 0, 0, 0], 'mdat')), QUICKTIME, 'size 0: the atom runs to the end of the file');
+    assert.deepEqual(detectMedia(atom([0, 0, 0, 8], 'wide')), QUICKTIME);
+    assert.deepEqual(detectMedia(atom([0, 0, 0, 0x14], 'pnot')), QUICKTIME);
+    // A 1 GB mdat whose size happens to be four printable bytes: the payload still shows it is binary.
+    assert.deepEqual(detectMedia(atom([0x40, 0x41, 0x42, 0x43], 'mdat', [0, 0, 0x2f, 0x1c, 0x65, 0x88, 0x84, 0])), QUICKTIME);
+    // Same, but the first 8 payload bytes are printable too: an mdat's payload counts up to byte 64.
+    assert.deepEqual(detectMedia(atom([0x40, 0x41, 0x42, 0x43], 'mdat', [...Buffer.from('ABCDEFGHIJKL'), 0x01])), QUICKTIME);
+  });
+
+  it('a first atom of exactly 256 bytes is QuickTime, not an ICO (both start 00 00 01 00)', () => {
+    const mov = atom([0, 0, 1, 0], 'free');
+    assert.deepEqual(detectMedia(mov), QUICKTIME);
+    assert.equal(isIcoSignature(mov), false, 'the atom name read as an entry count is over 24,000');
+  });
+
+  it("the other first boxes ffmpeg's mov demuxer reads: older QuickTime atoms and fragmented-MP4 segments", () => {
+    for (const type of ['junk', 'udta', 'pict', 'uuid']) assert.deepEqual(detectMedia(atom([0, 0, 0, 0x10], type)), QUICKTIME, type);
+    for (const type of ['styp', 'sidx', 'moof']) assert.deepEqual(detectMedia(atom([0, 0, 0, 0x18], type)), V('video/mp4', 'mov'), type);
+  });
+
+  it('an atom size that cannot exist is not QuickTime', () => {
+    assert.equal(detectMedia(atom([0, 0, 0, 5], 'moov')), null, 'smaller than its own 8-byte header');
+    assert.equal(detectMedia(atom([0, 0, 0, 1], 'mdat', [0, 0, 0, 0, 0, 0, 0, 9])), null, 'a 64-bit size below its 16-byte header');
+  });
+
+  it('text with a box type at offset 4 is not a movie: a DASH manifest must never reach ffmpeg', () => {
+    const manifest = (opening: string) => Buffer.from(`${opening}<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"><Period><AdaptationSet><Representation id="1" bandwidth="1"><BaseURL>C:/private/clip.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>\n`);
+    const openings = [
+      '<!--free-->', '<!--wide-->', '<!--skip-->', '<!--moov-->', '<!--mdat-->', '<!--pnot-->',
+      '<?\u00e9free ?>', // a processing instruction whose name starts with a non-ASCII letter
+      '  <?free ?>',
+      '<!--ftypjp2 -->', // ffmpeg scores an `ftyp` with a jp2 brand below its DASH probe
+      '<!--ftypisom-->',
+    ];
+    for (const opening of openings) assert.equal(detectMedia(manifest(opening)), null, opening);
+    assert.equal(detectMedia(Buffer.from('The free tier includes 100 requests per month.')), null);
+    assert.equal(detectImageMime(Buffer.from('<!--ftypavif--><svg xmlns="http://www.w3.org/2000/svg"/>')), null, 'nor an AVIF');
   });
 
   it('unknown bytes → null (documents included: no tool accepts them)', () => {
@@ -114,5 +200,23 @@ describe('resolveMediaInput classifies by magic bytes', () => {
     const r = await resolveMediaInput(ftyp('isom', ['isom', 'mp41']).toString('base64'));
     assert.equal(r.kind, 'video');
     assert.equal(r.mimeType, 'video/mp4');
+  });
+
+  it('a local file is typed by its leading bytes, not its extension', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'air-mime-'));
+    try {
+      const jpegAsPng = join(dir, 'photo.png');
+      await writeFile(jpegAsPng, await solid().jpeg().toBuffer());
+      assert.deepEqual(await resolveMediaInput(jpegAsPng), { kind: 'image', mimeType: 'image/jpeg', path: jpegAsPng });
+      const webmAsMp4 = join(dir, 'clip.mp4');
+      await writeFile(webmAsMp4, Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x82, 0x84]), Buffer.from('webm'), Buffer.alloc(16)]));
+      assert.deepEqual(await resolveMediaInput(webmAsMp4), { kind: 'video', mimeType: 'video/webm', path: webmAsMp4 });
+      // No signature matches: the extension still names the kind (the video tools then refuse it).
+      const playlist = join(dir, 'list.mp4');
+      await writeFile(playlist, '#EXTM3U\n#EXTINF:10,\nfile:///etc/passwd\n');
+      assert.equal((await resolveMediaInput(playlist)).kind, 'video');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

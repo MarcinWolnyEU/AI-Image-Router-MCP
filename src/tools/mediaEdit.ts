@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import sharp from 'sharp';
+import { constants as bufferConstants } from 'node:buffer';
 import { mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { runtime } from '../state/runtime.js';
 import { inputStem, resolveMediaInput, type ResolvedMedia } from '../util/inputs.js';
 import { cropImage, downsizeImage, frameBlackFraction } from '../media/imageEdit.js';
-import { cropVideo, downsizeVideo, extractFrame, ffmpegAvailable, ffprobeDuration, transcodeToMp4, withVideoFile, FFMPEG_MISSING_MESSAGE } from '../media/ffmpeg.js';
+import { cropVideo, downsizeVideo, extractFrame, ffmpegAvailable, ffprobeDuration, identifyVideo, transcodeToMp4, withVideoFile, FFMPEG_MISSING_MESSAGE } from '../media/ffmpeg.js';
 import { convertImage, type ImageFormat } from '../media/convert.js';
 import { tinifyCompress } from '../media/tinify.js';
 import { buildIco, icoEntryToRgba, icoImageFromEntry, icoImageFromPng, icoSizeOfSquare, isAllowedIcoSize, isIcoBytes, parseIco, ICO_ALLOWED_SIZES, ICO_MIME, type IcoEntry } from '../media/ico.js';
@@ -57,7 +58,7 @@ async function emitImage(
 
   if (mimeType === 'image/png' && o.outputMode === 'base64' && runtime.tinifyToken && !o.alreadyTinified) {
     try {
-      const compressed = await tinifyCompress(runtime.tinifyToken, bytes);
+      const compressed = await tinifyCompress(runtime.tinifyToken, bytes, mimeType);
       await rename(saved.path, join(dir, `${stem}-original.png`));
       saved = await writeMediaFile(dir, `${stem}.png`, compressed);
       finalBytes = compressed;
@@ -89,7 +90,7 @@ async function videoResult(label: string, outputMode: OutputMode, op: (outPath: 
   const outPath = join(dir, filename);
   await op(outPath);
   // base64 mode reads the file once and sizes it from those bytes (no stat-then-read window).
-  const videoBytes = outputMode === 'base64' ? await readFile(outPath) : undefined;
+  const videoBytes = outputMode === 'base64' ? await readForBase64(outPath) : undefined;
   const size = videoBytes ? videoBytes.length : (await stat(outPath)).size;
   const saved: SavedFile = { path: outPath, filename, uri: pathToFileURL(outPath).href, bytes: size };
   const lines = [outPath, `Output: video/mp4 (${(size / 1024 / 1024).toFixed(2)} MB)`];
@@ -216,12 +217,37 @@ async function transformVideo(media: ResolvedMedia, c: TransformCtx): Promise<To
   if (fmt && !VIDEO_FORMAT_RE.test(fmt)) return videoToStill(media, fmt, c);
   // Video stays video.
   if (wantsResize(c)) return videoResult('downsize', c.outputMode, (outPath) => downsizeVideo(media, outPath, dimsOf(c), c.signal));
+  // The rest works from the container the bytes prove, never a content-type or an extension:
+  // a playlist served as `video/mp4` is refused here instead of being saved as an mp4.
+  const { mime } = await identifyVideo(media);
   // A container change was asked for: transcode (an mp4 that is already mp4 passes through).
-  if (fmt === 'mp4' && media.mimeType !== 'video/mp4') {
+  if (fmt === 'mp4' && mime !== 'video/mp4') {
     return videoResult('convert', c.outputMode, (outPath) => transcodeToMp4(media, outPath, c.signal));
   }
-  // Passthrough (only output_mode / no manipulation).
-  return emitVideoBytes(media.bytes ?? (await readFile(media.path!)), media.mimeType, 'video', c.outputMode);
+  return passThroughVideo(media, mime, c.outputMode);
+}
+
+/**
+ * Return a video unchanged (only output_mode, or mp4 → mp4). A local file in filePath mode is
+ * linked where it is, with no copy: a recording can be gigabytes, more than one read can hold.
+ * Otherwise the bytes are saved to the output directory (and returned inline in base64 mode).
+ */
+async function passThroughVideo(media: ResolvedMedia, mime: string, outputMode: OutputMode): Promise<ToolResult> {
+  if (media.path && outputMode === 'filePath') return unchangedFileResult(media.path, mime);
+  return emitVideoBytes(media.bytes ?? (await readForBase64(media.path!)), mime, 'video', outputMode);
+}
+
+/** Largest file that still fits in one base64 string (V8 caps a string at about 512 MB). */
+const MAX_BASE64_BYTES = Math.floor(bufferConstants.MAX_STRING_LENGTH / 4) * 3;
+
+/** Read a file to return it as base64, refusing (before the read) one too large to encode. */
+async function readForBase64(path: string): Promise<Buffer> {
+  const { size } = await stat(path);
+  if (size > MAX_BASE64_BYTES) {
+    const mb = (n: number) => Math.round(n / 1024 / 1024);
+    throw new Error(`The video is ${mb(size)} MB, too large to return as base64 (at most ${mb(MAX_BASE64_BYTES)} MB). Use output_mode "filePath" to get a link to it.`);
+  }
+  return readFile(path);
 }
 
 /** An ICO input + a non-ico image output_format → unpack every size into its own file. */
@@ -234,14 +260,15 @@ function isUnchangedFileRequest(c: TransformCtx, media: ResolvedMedia): boolean 
   return !wantsResize(c) && !c.fmt && c.outputMode === 'filePath' && c.save && !!media.path;
 }
 
-async function unchangedFileResult(path: string, img: WorkingImage, inline: boolean): Promise<ToolResult> {
+/** A link to the source file itself, unchanged, plus an inline preview when `preview.inline` (images only). */
+async function unchangedFileResult(path: string, mimeType: string, preview?: { bytes: Buffer; inline: boolean }): Promise<ToolResult> {
   const filename = path.split(/[\\/]/).pop() ?? 'file';
-  const content: ToolContent[] = [{ type: 'resource_link', uri: pathToFileURL(path).href, name: filename, mimeType: img.mimeType, description: 'Source file (unchanged)' }];
-  if (inline) {
-    const p = await makeImagePreview(img.bytes, img.mimeType, runtime.config.output.previewMaxBytes);
+  const content: ToolContent[] = [{ type: 'resource_link', uri: pathToFileURL(path).href, name: filename, mimeType, description: 'Source file (unchanged)' }];
+  if (preview?.inline) {
+    const p = await makeImagePreview(preview.bytes, mimeType, runtime.config.output.previewMaxBytes);
     if (p) content.push({ type: 'image', data: p.data, mimeType: p.mimeType });
   }
-  return { content: [{ type: 'text', text: `${path}\nOutput: ${img.mimeType} (unchanged)` }, ...content] };
+  return { content: [{ type: 'text', text: `${path}\nOutput: ${mimeType} (unchanged)` }, ...content] };
 }
 
 /** Stem label for the saved image: what the call did to it. */
@@ -257,6 +284,7 @@ async function transformImage(media: ResolvedMedia, c: TransformCtx): Promise<To
   const source = media.bytes ?? (await readFile(media.path!));
   if (isIcoUnpackRequest(fmt, source)) return unpackIco(source, c);
 
+  // `media.mimeType` comes from the bytes (`resolveMediaInput`), so a JPEG named `photo.png` is a JPEG.
   let img: WorkingImage = { bytes: source, mimeType: media.mimeType, alreadyTinified: false };
   if (wantsResize(c)) {
     const d = await downsizeImage(imageInputOf(media), dimsOf(c));
@@ -264,7 +292,7 @@ async function transformImage(media: ResolvedMedia, c: TransformCtx): Promise<To
   }
   if (fmt && fmt !== 'ico') img = await convertTo(img.bytes, fmt as ImageFormat, img.mimeType, c);
 
-  if (isUnchangedFileRequest(c, media)) return unchangedFileResult(media.path!, img, c.inline);
+  if (isUnchangedFileRequest(c, media)) return unchangedFileResult(media.path!, img.mimeType, { bytes: img.bytes, inline: c.inline });
   return emitImage(img.bytes, img.mimeType, imageOutputLabel(c), {
     save: c.save,
     inline: c.inline,
@@ -325,7 +353,7 @@ async function addIcoInputEntries(acc: IcoCollection, bytes: Buffer, element: nu
 }
 
 /** Add a plain image input; it must already be square AND an allowed size (never resized). */
-async function addPlainImageEntry(acc: IcoCollection, bytes: Buffer, mimeType: string, element: number, from: string, intended: number | undefined): Promise<void> {
+async function addPlainImageEntry(acc: IcoCollection, bytes: Buffer, element: number, from: string, intended: number | undefined): Promise<void> {
   let size: number;
   try {
     size = await icoSizeOfSquare(bytes);
@@ -339,7 +367,7 @@ async function addPlainImageEntry(acc: IcoCollection, bytes: Buffer, mimeType: s
     );
   }
   claimIcoSize(acc, size, element);
-  acc.images.push(icoImageFromPng(await ensurePng(bytes, mimeType)));
+  acc.images.push(icoImageFromPng(await ensurePng(bytes)));
   acc.provenance.push({ size, from });
 }
 
@@ -355,7 +383,7 @@ async function collectIcoEntries(inputs: string[], declared: number[] | undefine
     const intended = positional ? declared![i]! : undefined;
     const from = inputLabel(input);
     if (isIcoBytes(bytes)) await addIcoInputEntries(acc, bytes, i + 1, from, intended);
-    else await addPlainImageEntry(acc, bytes, media.mimeType, i + 1, from, intended);
+    else await addPlainImageEntry(acc, bytes, i + 1, from, intended);
   }
   return acc;
 }

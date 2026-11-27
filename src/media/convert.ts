@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import { ensurePng } from '../util/files.js';
 import { detectImageMime } from '../util/mime.js';
-import { tinifyCompress, tinifyConvert } from './tinify.js';
+import { TINIFY_INPUT_MIMES, tinifyCompress, tinifyConvert } from './tinify.js';
 
 export type ImageFormat = 'png' | 'jpg' | 'webp' | 'avif';
 
@@ -15,15 +15,6 @@ const FORMAT_MIME: Record<ImageFormat, string> = {
 /** MIME type for a target image format. */
 export function formatMime(fmt: ImageFormat): string {
   return FORMAT_MIME[fmt];
-}
-
-/** Image MIME types Tinify accepts as input to /shrink. */
-const TINIFY_INPUT_OK = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/avif']);
-
-/** The output's magic bytes must match what we are about to report (else the sharp fallback runs). */
-function assertProduced(out: Buffer, mimeType: string): void {
-  const actual = detectImageMime(out);
-  if (actual !== mimeType) throw new Error(`Tinify returned ${actual ?? 'unrecognized bytes'} instead of ${mimeType}`);
 }
 
 export interface ConvertedImage {
@@ -66,17 +57,18 @@ interface ConvertOpts {
   logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void };
 }
 
-/** Tinify: compress (png) or convert (the rest); the answer's magic bytes must be the target's. */
+/**
+ * Tinify: compress (png) or convert (the rest). `tinify.ts` refuses an answer whose magic bytes
+ * aren't the requested type, which sends the caller to the sharp fallback.
+ */
 async function tinifyTo(bytes: Buffer, target: ImageFormat, token: string, opts: ConvertOpts): Promise<Buffer> {
   const mimeType = FORMAT_MIME[target];
   const sourceMime = (detectImageMime(bytes) ?? opts.sourceMime ?? '').toLowerCase();
-  let input = sourceMime && !TINIFY_INPUT_OK.has(sourceMime) ? await ensurePng(bytes, sourceMime) : bytes;
+  let input = sourceMime && !TINIFY_INPUT_MIMES.has(sourceMime) ? await ensurePng(bytes) : bytes;
   // Tinify's compress is FORMAT-PRESERVING: a JPEG/WebP/AVIF source compressed "to png"
   // came back as the same JPEG/WebP/AVIF bytes under a .png name. Make it a PNG first.
-  if (target === 'png' && detectImageMime(input) !== 'image/png') input = await sharp(input).png().toBuffer();
-  const out = target === 'png' ? await tinifyCompress(token, input, opts.signal) : await tinifyConvert(token, input, mimeType, opts.signal);
-  assertProduced(out, mimeType);
-  return out;
+  if (target === 'png') input = await ensurePng(input);
+  return target === 'png' ? tinifyCompress(token, input, mimeType, opts.signal) : tinifyConvert(token, input, mimeType, opts.signal);
 }
 
 /** Local sharp encode: the no-key (and Tinify-failure) path. */

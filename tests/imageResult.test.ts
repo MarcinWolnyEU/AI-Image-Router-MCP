@@ -9,9 +9,14 @@
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import sharp from 'sharp';
 import type { Gateway, ImageGenParams, ImageGenResult } from '../src/gateways/types.js';
 import { describeImage, formatBytes, imageInfo } from '../src/util/files.js';
+import { detectImageMime } from '../src/util/mime.js';
+import { runtime } from '../src/state/runtime.js';
 import { makeFakeGateway, startMcpHarness, textOf, type CallResult, type McpHarness } from './helpers/mcp.js';
 
 interface ToolInfo {
@@ -20,6 +25,8 @@ interface ToolInfo {
 }
 
 let png: Buffer;
+/** When set, the gateway delivers these bytes (still labelled image/png) instead of `png`. */
+let delivered: Buffer | undefined;
 let calls = 0;
 let last: ImageGenParams | undefined;
 const MODEL = 'openai/gpt-image-2.5-sunburst';
@@ -35,7 +42,7 @@ const fakeGateway: Gateway = makeFakeGateway({
     calls += 1;
     last = params;
     return {
-      images: [{ bytes: png, mimeType: 'image/png' }],
+      images: [{ bytes: delivered ?? png, mimeType: 'image/png' }],
       modelUsed: MODEL,
       cost: 0.0048,
       warnings: params.resolution ? [`${MODEL} has no resolution-tier parameter, so "${params.resolution}" was not sent — native full size kept.`] : [],
@@ -167,5 +174,54 @@ describe('generate_image says when a model ignored the requested size', () => {
   it('save:false with previews off says that nothing was returned', async () => {
     const r = await call('generate_image', { prompt: 'x', save: false, inline_preview: false, wait: true });
     assert.match(textOf(r), /nothing was saved and no preview was returned/);
+  });
+});
+
+describe('generate_image with a provider that labels JPEG bytes image/png', () => {
+  it('with Tinify on, both saved .png files hold real PNG bytes (Tinify compress would hand the JPEG back unchanged)', async () => {
+    const realFetch = globalThis.fetch;
+    let uploaded = Buffer.alloc(0);
+    // api.tinify.com as it behaves: /shrink stores the upload, GET <Location> returns it in the same format.
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith('/shrink')) {
+        uploaded = Buffer.from(init!.body as Uint8Array);
+        return new Response('{}', { status: 201, headers: { location: 'https://api.tinify.com/output/stub' } });
+      }
+      return new Response(uploaded, { status: 200 });
+    }) as typeof fetch;
+    delivered = await sharp(png).jpeg().toBuffer();
+    runtime.tinifyToken = 'k';
+    const before = new Set(readdirSync(h.outDir));
+    try {
+      const r = await call('generate_image', { prompt: 'mislabelled', wait: true });
+      assert.equal(r.isError, undefined, textOf(r));
+      assert.equal(detectImageMime(uploaded), 'image/png', 'Tinify was sent a PNG, not the JPEG');
+      assert.match(textOf(r), /re-encoded from the model's image\/jpeg/, 'the reply names what the model really returned');
+      const written = readdirSync(h.outDir).filter((f) => !before.has(f));
+      assert.equal(written.length, 2, written.join(', '));
+      for (const f of written) {
+        assert.match(f, /\.png$/);
+        assert.equal(detectImageMime(await readFile(join(h.outDir, f))), 'image/png', f);
+      }
+    } finally {
+      globalThis.fetch = realFetch;
+      delivered = undefined;
+      runtime.tinifyToken = null;
+    }
+  });
+
+  it('without Tinify, the JPEG is saved as .jpg and returned as image/jpeg', async () => {
+    delivered = await sharp(png).jpeg().toBuffer();
+    const before = new Set(readdirSync(h.outDir));
+    try {
+      const r = await call('generate_image', { prompt: 'mislabelled', wait: true, output_mode: 'base64' });
+      assert.equal(r.isError, undefined, textOf(r));
+      const written = readdirSync(h.outDir).filter((f) => !before.has(f));
+      assert.deepEqual(written.map((f) => f.slice(f.lastIndexOf('.'))), ['.jpg'], written.join(', '));
+      const block = r.content.find((c) => c.type === 'image') as { mimeType?: string } | undefined;
+      assert.equal(block?.mimeType, 'image/jpeg');
+    } finally {
+      delivered = undefined;
+    }
   });
 });

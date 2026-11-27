@@ -24,7 +24,7 @@ import {
   GATEWAYS,
   GatewayId,
   loadConfig,
-  resolveToken,
+  resolveApiKey,
   saveConfig,
   TokenSource,
 } from './schema.js';
@@ -139,7 +139,7 @@ async function configureGateway(
   await logger.init();
   let resolvedToken = '';
   try {
-    resolvedToken = await resolveToken(token);
+    resolvedToken = await resolveApiKey(token);
   } catch (err) {
     issues.add('error', 'token', `Token could not be resolved: ${(err as Error).message}`);
   }

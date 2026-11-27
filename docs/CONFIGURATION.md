@@ -51,12 +51,12 @@ Running the wizard again with an existing `config.json` pre-selects your current
 | Key | Notes |
 |-----|-------|
 | `gateway` | `openrouter`, `mistral`, `edenai` or `fal`. |
-| `token` | `{ "type": "file" \| "inline" \| "env", "value": "..." }`. An empty value (blank inline string, empty env var, empty file) is a configuration error. |
+| `token` | `{ "type": "file" \| "inline" \| "env", "value": "..." }`. An empty value (blank inline string, empty env var, empty file) is a configuration error, and so is a token file over 64 KiB (it is not read past that point) or a token path that is not a regular file (a directory, FIFO or device is not read at all). This applies to every token file, `http.authToken` included. The value must be the key alone: one run of printable ASCII with no spaces or line breaks, at most 4096 characters. Anything else (say, a token file pointing at the wrong file) is refused before it is sent anywhere. Surrounding whitespace and a trailing newline are fine. |
 | `fal` | `relaxSafety` (default `false`). When `true`, fal image requests carry `enable_safety_checker: false` and `safety_tolerance: "5"` (the most permissive level) on the models whose schema has those fields. When `false`, nothing is sent and fal's own defaults apply. A `provider_options` value on a call always wins over both. Ignored for the other gateways. |
 | `image` | `model`, `edenProvider`, `defaultAspectRatio`, `defaultResolution` (not sent to a model with no resolution parameter, such as gpt-image-2.5), `async` (default `true`), and the supported lists. `width` in pixels is the size lever, and `output_format: "ico"` uses it as the square icon size (default `256`). |
 | `imageToVideo`, `textToVideo` | `enabled`, `model`, `defaultFps`, `defaultResolution`, `defaultDuration`, `async` (default `true`), and `multiReference` for image to video. |
 | `backgroundRemoval` | `model` (`none`, `birefnet-general`, `birefnet-massive`, `bria-rmbg`, `isnet-general-use`, `ben2-base`, `finegrain-box-segmenter`), `executionProvider` (`auto`, `dml`, `cuda`, `coreml`, `webgpu`, `cpu`), `modelsDir`. |
-| `tinify` | `{ "token": { ... } }` or `null`. When set, enables PNG compression and WebP/AVIF output. |
+| `tinify` | `{ "token": { ... } }` or `null`. When set, enables PNG compression and WebP/AVIF output. The token follows the same single-key rule as `token`. Only PNG, JPEG, WebP and AVIF images are uploaded to Tinify. |
 | `logging` | `policy` (`none`, `today`, `persistent-daily`) and `dir`. |
 | `output` | `dir`, `inlinePreview`, `previewMaxBytes`. |
 | `mistralAgentModel` | The orchestrator model that drives Mistral's image generation tool (default `mistral-medium-latest`). |
