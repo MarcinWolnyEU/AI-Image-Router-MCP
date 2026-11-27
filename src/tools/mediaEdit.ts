@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import sharp from 'sharp';
 import { constants as bufferConstants } from 'node:buffer';
-import { mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -240,14 +240,22 @@ async function passThroughVideo(media: ResolvedMedia, mime: string, outputMode: 
 /** Largest file that still fits in one base64 string (V8 caps a string at about 512 MB). */
 const MAX_BASE64_BYTES = Math.floor(bufferConstants.MAX_STRING_LENGTH / 4) * 3;
 
-/** Read a file to return it as base64, refusing (before the read) one too large to encode. */
+/**
+ * Read a file to return it as base64, refusing (before the read) one too large to encode. The size
+ * check and the read go through one handle, so both see the same file even if the path is replaced.
+ */
 async function readForBase64(path: string): Promise<Buffer> {
-  const { size } = await stat(path);
-  if (size > MAX_BASE64_BYTES) {
-    const mb = (n: number) => Math.round(n / 1024 / 1024);
-    throw new Error(`The video is ${mb(size)} MB, too large to return as base64 (at most ${mb(MAX_BASE64_BYTES)} MB). Use output_mode "filePath" to get a link to it.`);
+  const handle = await open(path, 'r');
+  try {
+    const { size } = await handle.stat();
+    if (size > MAX_BASE64_BYTES) {
+      const mb = (n: number) => Math.round(n / 1024 / 1024);
+      throw new Error(`The video is ${mb(size)} MB, too large to return as base64 (at most ${mb(MAX_BASE64_BYTES)} MB). Use output_mode "filePath" to get a link to it.`);
+    }
+    return await handle.readFile();
+  } finally {
+    await handle.close().catch(() => {});
   }
-  return readFile(path);
 }
 
 /** An ICO input + a non-ico image output_format → unpack every size into its own file. */

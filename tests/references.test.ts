@@ -121,7 +121,8 @@ describe('reference resolution: local & inline inputs', () => {
   });
 
   it('a slash-y string that is neither an image nor a file still reads as a missing file', async () => {
-    const { errors } = await resolveReferenceImages(['/tmp/abc', 'C:\\nope\\x.png', 'not base64 at all!']);
+    // `/nonexistent/abc` is valid base64 too. Not under /tmp, where any user could create the file.
+    const { errors } = await resolveReferenceImages(['/nonexistent/abc', 'C:\\nope\\x.png', 'not base64 at all!']);
     assert.match(errors[0]!, /local file not found/);
     assert.match(errors[1]!, /local file not found/);
     assert.match(errors[2]!, /not a URL, data URL, readable file path, or base64 image/);
@@ -444,7 +445,7 @@ describe('resolveImageInput / resolveMediaInput (mp4 image_to_video, remove_back
   it('a missing path is reported as a missing file, not decoded as base64 garbage', async () => {
     await assert.rejects(resolveImageInput('C:\\nope\\photo.png'), /local file not found/);
     await assert.rejects(resolveMediaInput('C:\\nope\\photo.png'), /local file not found/);
-    await assert.rejects(resolveMediaInput('/tmp/abc'), /local file not found/);
+    await assert.rejects(resolveMediaInput('/nonexistent/abc'), /local file not found/);
     await assert.rejects(resolveMediaInput('clip.flv'), /local file not found/);
     await assert.rejects(resolveMediaInput('match.ts'), /local file not found/);
     const ok = await resolveMediaInput(PNG_1x1.toString('base64'));
