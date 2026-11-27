@@ -8,15 +8,16 @@
  *
  * Reads the key from `openrouter token.txt` (or OPENROUTER_API_KEY).
  */
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECT_ROOT } from '../src/config/paths.js';
-import { DEFAULT_TOKEN_FILES } from '../src/config/schema.js';
+import { DEFAULT_TOKEN_FILES, resolveApiKey } from '../src/config/schema.js';
 import { getJson } from '../src/util/http.js';
 import { parseImageModelEndpoints, type ImageParamDescriptor } from '../src/gateways/openrouterImages.js';
 
 const BASE = 'https://openrouter.ai/api/v1';
-const key = process.env['OPENROUTER_API_KEY'] ?? readFileSync(join(PROJECT_ROOT, DEFAULT_TOKEN_FILES.openrouter), 'utf8').trim();
+const key = await resolveApiKey(
+  process.env['OPENROUTER_API_KEY'] ? { type: 'env', value: 'OPENROUTER_API_KEY' } : { type: 'file', value: join(PROJECT_ROOT, DEFAULT_TOKEN_FILES.openrouter) },
+);
 const headers = { Authorization: `Bearer ${key}` };
 
 const fmt = (d: ImageParamDescriptor): string => (d.type === 'enum' ? d.values.join(' | ') : d.type === 'range' ? `${d.min}..${d.max}` : 'yes');

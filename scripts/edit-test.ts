@@ -1,6 +1,7 @@
 /** Validate Tinify (compress/convert) + sharp crop/downsize + ffmpeg video crop/downsize. */
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveApiKey, TINIFY_TOKEN_FILE } from '../src/config/schema.js';
 import { tinifyCompress, tinifyConvert } from '../src/media/tinify.js';
 import { cropImage, downsizeImage } from '../src/media/imageEdit.js';
 import { cropVideo, downsizeVideo, ffmpegAvailable } from '../src/media/ffmpeg.js';
@@ -17,8 +18,8 @@ console.error('source PNG:', png, pngBytes.length, 'bytes');
 
 // --- Tinify ---
 console.error('\n--- Tinify ---');
-const key = readFileSync(join(ROOT, 'tinify com token.txt'), 'utf8').trim();
-const compressed = await tinifyCompress(key, pngBytes);
+const key = await resolveApiKey({ type: 'file', value: join(ROOT, TINIFY_TOKEN_FILE) });
+const compressed = await tinifyCompress(key, pngBytes, 'image/png');
 writeFileSync(join(out, '_edit_tinify.png'), compressed);
 console.error('compress PNG:', pngBytes.length, '->', compressed.length, `(${pct(pngBytes.length, compressed.length)})`);
 const webp = await tinifyConvert(key, pngBytes, 'image/webp');

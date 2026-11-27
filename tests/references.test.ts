@@ -10,13 +10,14 @@
 import { after, before, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { mkdir, mkdtemp, open, readFile, readdir, writeFile, type FileHandle } from 'node:fs/promises';
+import fsPromises, { mkdir, mkdtemp, open, readFile, readdir, writeFile, type FileHandle } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import sharp from 'sharp';
 import { decodeRawBase64, resolveImageInput, resolveMediaInput, resolveReferenceImages } from '../src/util/inputs.js';
-import { saveDownloadCopy, saveFileGroup, sanitizeFilename } from '../src/util/files.js';
+import { readFileHead, saveDownloadCopy, saveFileGroup, sanitizeFilename } from '../src/util/files.js';
 
 // A real 1×1 PNG (valid header → detected as image/png).
 const PNG_1x1 = Buffer.from(
@@ -444,8 +445,36 @@ describe('resolveImageInput / resolveMediaInput (mp4 image_to_video, remove_back
     await assert.rejects(resolveImageInput('C:\\nope\\photo.png'), /local file not found/);
     await assert.rejects(resolveMediaInput('C:\\nope\\photo.png'), /local file not found/);
     await assert.rejects(resolveMediaInput('/tmp/abc'), /local file not found/);
+    await assert.rejects(resolveMediaInput('clip.flv'), /local file not found/);
+    await assert.rejects(resolveMediaInput('match.ts'), /local file not found/);
     const ok = await resolveMediaInput(PNG_1x1.toString('base64'));
     assert.equal(ok.kind, 'image');
+  });
+
+  it('a local video in any recognized container resolves by path, without reading the file into memory', async (t) => {
+    const dir = await tmp();
+    // Bytes no signature matches fall back to a known extension (the content here is not even a transport stream).
+    const ts = join(dir, 'match.ts');
+    await writeFile(ts, 'not read');
+    assert.deepEqual(await resolveMediaInput(ts), { kind: 'video', mimeType: 'video/mp2t', path: ts });
+    const flv = join(dir, 'clip.FLV');
+    await writeFile(flv, 'not read');
+    assert.deepEqual(await resolveMediaInput(flv), { kind: 'video', mimeType: 'video/x-flv', path: flv });
+    // An unknown extension is identified from its head: an MPEG program stream with megabytes behind it.
+    const vob = join(dir, 'title.vob');
+    await writeFile(vob, Buffer.concat([Buffer.from([0x00, 0x00, 0x01, 0xba]), Buffer.alloc(4 * 1024 * 1024)]));
+    assert.equal((await readFileHead(vob)).length, 512);
+    // A whole-file read is what failed on a 3 GB recording (ERR_FS_FILE_TOO_LARGE), so it must not happen.
+    t.mock.method(fsPromises, 'readFile', async () => {
+      throw new Error('the whole file was read');
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.deepEqual(await resolveMediaInput(vob), { kind: 'video', mimeType: 'video/mpeg', path: vob });
+    } finally {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    }
   });
 
   it('decodeRawBase64 is strict: alphabet + clean round-trip only', () => {

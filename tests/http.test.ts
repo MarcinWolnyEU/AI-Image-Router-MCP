@@ -7,8 +7,12 @@
  */
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GatewayHttpError, getJson, postJson, rawRequest, requestNeverSent } from '../src/util/http.js';
-import { resolveToken, ConfigError } from '../src/config/schema.js';
+import { resolveApiKey, resolveToken, ConfigError } from '../src/config/schema.js';
 
 const realFetch = globalThis.fetch;
 let calls = 0;
@@ -131,5 +135,57 @@ describe('resolveToken never returns an empty secret', () => {
   });
   it('trims a real value', async () => {
     assert.equal(await resolveToken({ type: 'inline', value: '  abc  ' }), 'abc');
+  });
+});
+
+describe('resolveApiKey only lets a key-shaped value leave the machine', () => {
+  it("accepts every provider's key format", async () => {
+    for (const key of ['sk-or-v1-0123abcd', '0f1e2d3c-aaaa-bbbb-cccc-000000000000:5ecret', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig_-', 'AbCd1234']) {
+      assert.equal(await resolveApiKey({ type: 'inline', value: key }), key);
+    }
+  });
+  it('refuses a token file holding something other than one key, without echoing its contents', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'air-key-'));
+    try {
+      const pem = join(dir, 'wrong.txt');
+      await writeFile(pem, '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\n');
+      await assert.rejects(resolveApiKey({ type: 'file', value: pem }), (err: Error) => {
+        assert.ok(err instanceof ConfigError);
+        assert.match(err.message, /does not hold a single API key/);
+        assert.match(err.message, /wrong\.txt/);
+        assert.doesNotMatch(err.message, /MIIEvQ|BEGIN/);
+        return true;
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it('refuses an oversized token file from its size alone', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'air-key-'));
+    try {
+      const big = join(dir, 'big.txt');
+      await writeFile(big, Buffer.alloc(70 * 1024, 0x6b)); // one valid-looking run, but 70 KiB
+      await assert.rejects(resolveApiKey({ type: 'file', value: big }), (err: Error) => err instanceof ConfigError && /over 64 KiB/.test(err.message));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it('refuses a token path that is not a regular file (a directory, a device) without reading it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'air-key-'));
+    try {
+      await assert.rejects(resolveToken({ type: 'file', value: dir }), (err: Error) => err instanceof ConfigError && /not a regular file|could not be read/.test(err.message));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+    // `stat().size` is 0 for a device, so only the handle's own fstat (and a bounded read) stop an endless read.
+    if (existsSync('/dev/zero')) await assert.rejects(resolveApiKey({ type: 'file', value: '/dev/zero' }), /not a regular file/);
+  });
+  it('refuses inner whitespace, non-ASCII and oversized values', async () => {
+    await assert.rejects(resolveApiKey({ type: 'inline', value: 'Bearer sk-abc' }), /single API key/);
+    await assert.rejects(resolveApiKey({ type: 'inline', value: 'klucz-żółw' }), /single API key/);
+    await assert.rejects(resolveApiKey({ type: 'inline', value: 'k'.repeat(4097) }), /over 4096 characters/);
+  });
+  it('keeps resolveToken permissive (the HTTP auth secret never leaves the machine)', async () => {
+    assert.equal(await resolveToken({ type: 'inline', value: 'my shared secret' }), 'my shared secret');
   });
 });

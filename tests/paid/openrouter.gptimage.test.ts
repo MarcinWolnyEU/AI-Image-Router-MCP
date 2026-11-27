@@ -12,11 +12,11 @@
  */
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { OpenRouterGateway } from '../../src/gateways/openrouter.js';
 import { PROJECT_ROOT } from '../../src/config/paths.js';
-import { DEFAULT_TOKEN_FILES } from '../../src/config/schema.js';
+import { DEFAULT_TOKEN_FILES, resolveApiKey } from '../../src/config/schema.js';
 import { describeImage, imageInfo } from '../../src/util/files.js';
 
 const MODEL = 'openai/gpt-image-2.5-sunburst';
@@ -25,9 +25,9 @@ const logger = { info() {}, warn() {}, error() {}, debug() {} } as unknown as Co
 
 describe('LIVE OpenRouter gpt-image-2.5-sunburst', () => {
   let gw: OpenRouterGateway;
-  before(() => {
+  before(async () => {
     assert.ok(existsSync(tokenPath), `OpenRouter token file missing: ${tokenPath}`);
-    gw = new OpenRouterGateway(readFileSync(tokenPath, 'utf8').trim(), logger);
+    gw = new OpenRouterGateway(await resolveApiKey({ type: 'file', value: tokenPath }), logger);
   });
 
   it('capability API: quality enum, background auto|opaque, no resolution tier', async () => {

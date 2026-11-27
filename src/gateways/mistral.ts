@@ -129,7 +129,7 @@ export class MistralGateway implements Gateway {
 
     const images = [];
     for (const fileId of fileIds) {
-      const bytes = await getBytes(`${BASE}/files/${fileId}/content`, {
+      const bytes = await getBytes(`${BASE}/files/${encodeURIComponent(fileId)}/content`, {
         headers: { ...this.headers(), Accept: 'application/octet-stream' },
         signal: params.signal,
         timeoutMs: 120_000,

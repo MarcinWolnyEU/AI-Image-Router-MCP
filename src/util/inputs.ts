@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { extFromMime, parseDataUrl, saveDownloadCopy } from './files.js';
+import { extFromMime, parseDataUrl, readFileHead, saveDownloadCopy } from './files.js';
 import { detectImageMime, detectMedia, sniffImageMime } from './mime.js';
 import type { ReferenceImage } from '../gateways/types.js';
 
@@ -239,9 +239,23 @@ export interface ResolvedMedia {
   path?: string;
 }
 
-const VIDEO_EXT = /\.(mp4|m4v|mov|webm|mkv|avi)$/i;
+const VIDEO_EXT = /\.(mp4|m4v|mov|webm|mkv|avi|flv|ogv|wmv|asf|mpe?g|ts)$/i;
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|ico)$/i;
-const VIDEO_MIME: Record<string, string> = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo' };
+const VIDEO_MIME: Record<string, string> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  flv: 'video/x-flv',
+  ogv: 'video/ogg',
+  wmv: 'video/x-ms-asf',
+  asf: 'video/x-ms-asf',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
+  ts: 'video/mp2t',
+};
 const IMAGE_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff', avif: 'image/avif', ico: 'image/x-icon' };
 
 function extOf(p: string): string {
@@ -256,7 +270,11 @@ function sniffKind(bytes: Buffer): { kind: MediaKind; mimeType: string } {
   return { kind: 'image', mimeType: d?.kind === 'image' ? d.mime : sniffImageMime(bytes) };
 }
 
-/** Remote media: magic bytes first (an AVIF served as octet-stream, or a mislabelled header); the content-type only decides for bytes no signature matches. */
+/**
+ * Remote media: magic bytes first (an AVIF served as octet-stream, or a mislabelled header). The
+ * content-type only picks the kind for bytes no signature matches, and the video tools refuse
+ * such bytes (`identifyVideo`), so a playlist served as `video/mp4` is never saved as one.
+ */
 async function mediaFromUrl(url: string): Promise<ResolvedMedia> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status}`);
@@ -268,12 +286,19 @@ async function mediaFromUrl(url: string): Promise<ResolvedMedia> {
   return { ...sniffKind(bytes), bytes };
 }
 
-/** A local file: the extension decides when it is a known one, else the leading bytes. */
+/**
+ * A local file: its leading bytes decide, as for every other input (a JPEG named `photo.png` is a
+ * JPEG, a webm named `clip.mp4` a webm). The extension only names bytes no signature matches,
+ * and the video tools then refuse them. Only the head is read, never the whole file: the bytes
+ * are not kept, and a video can be gigabytes.
+ */
 async function mediaFromFile(path: string): Promise<ResolvedMedia> {
+  const head = await readFileHead(path);
+  if (detectMedia(head)) return { ...sniffKind(head), path };
   const ext = extOf(path);
   if (VIDEO_EXT.test(path)) return { kind: 'video', mimeType: VIDEO_MIME[ext] ?? 'video/mp4', path };
   if (IMAGE_EXT.test(path)) return { kind: 'image', mimeType: IMAGE_MIME[ext] ?? 'image/png', path };
-  return { ...sniffKind(await readFile(path)), path };
+  return { ...sniffKind(head), path };
 }
 
 /** Resolve a crop/downsize input (URL, data URL, file path, or base64) into kind + bytes/path. */
@@ -295,4 +320,4 @@ export async function resolveMediaInput(input: string): Promise<ResolvedMedia> {
   throw new Error(`Could not resolve media input (not a URL, data URL, existing file path, or base64): "${s.slice(0, 60)}…"`);
 }
 
-const MEDIA_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|heic|heif|ico|mp4|m4v|mov|webm|mkv|avi)$/i;
+const MEDIA_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|heic|heif|ico|mp4|m4v|mov|webm|mkv|avi|flv|ogv|wmv|asf|mpe?g|ts)$/i;

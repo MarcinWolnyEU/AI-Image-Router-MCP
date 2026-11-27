@@ -111,5 +111,8 @@ Typical results on a 1 MB generated PNG: compressed PNG about 46 to 64% smaller,
 `crop_media` and `transform_media` take a file path, an http(s) URL, a data URL or raw base64, and work on both images and videos.
 
 - Images use sharp. Video uses ffmpeg from your `PATH` (frame extraction also needs `ffprobe`, which ships with ffmpeg). Without ffmpeg, video operations return a clear message and image editing is unaffected.
+- Every video is checked by its leading bytes (mp4, mov, webm, mkv, avi, flv, ogg, wmv/asf, mpeg or ts) before it is used, whether it came as a URL, a data URL, base64 or a local path. Anything else (an HLS playlist named `clip.mp4`, say) is refused, whatever its content-type or extension claims, and so is a file that can't be read.
+- Every input is typed by its bytes, not its name: `transform_media` reports a JPEG called `photo.png` as `image/jpeg` and saves its copy as `.jpg`, and treats a webm called `clip.mp4` as webm (so `output_format: "mp4"` transcodes it). `generate_image` does the same with a model's output: JPEG bytes labelled `image/png` are saved as `.jpg`.
+- A local video returned unchanged (only `output_mode`, or `output_format: "mp4"` on an mp4) comes back as a link to the file itself in `filePath` mode, with no copy. In `base64` mode it is copied, and a video over about 384 MB is refused (the most one base64 string can hold).
 - A PNG returned as base64 while Tinify is enabled is compressed first, and the uncompressed copy is kept as `-original`.
 - Format conversion works without a Tinify token: sharp handles PNG, JPEG, WebP and AVIF locally, with larger files.

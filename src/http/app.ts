@@ -99,6 +99,15 @@ function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<unknown> 
 }
 
 /**
+ * The path of a rejected request as it goes into the log: the route, never the rest of the URL.
+ * A client may carry its secret in the query (`/mcp?token=…`) or in a path segment
+ * (`/mcp/<key>`, which `handle` still routes), and a 401 must not write it to the log file.
+ */
+function loggedPath(url: string): string {
+  return /^\/mcp\/?(?:[?#]|$)/.test(url) ? '/mcp' : '/mcp/… (rest of the path not logged)';
+}
+
+/**
  * The Streamable HTTP request handler (`/mcp`). Per request: path → Host/Origin guard (only
  * while auth is off: the DNS-rebinding protection) → shared-secret auth → session routing.
  * Sessions expire after `sessionIdleMs` without a request (the map used to grow forever);
@@ -148,7 +157,7 @@ export function createHttpApp(opts: HttpAppOptions): HttpApp {
     // a leaked session id alone must not grant access. Plain 401 without an OAuth challenge:
     // Le Chat then offers Bearer / API-key entry instead of trying OAuth discovery.
     if (!isHttpRequestAuthorized(req.headers, authToken)) {
-      opts.logger.warn('HTTP request rejected: missing/invalid bearer token', { method: req.method, url: req.url ?? '', remote: req.socket.remoteAddress });
+      opts.logger.warn('HTTP request rejected: missing/invalid bearer token', { method: req.method, path: loggedPath(req.url ?? ''), remote: req.socket.remoteAddress });
       sendJsonRpcError(res, 401, -32001, 'Unauthorized: send Authorization: Bearer <token>');
       return false;
     }

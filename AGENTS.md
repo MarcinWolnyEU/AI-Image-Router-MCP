@@ -56,8 +56,9 @@ gateway client (direct REST) → media saved to `runtime.outputDir()` → `{ con
   `pollGenerationJob` is the one never-throwing poll for all three generation tools.
 - `gateways/openrouterImages.ts` is the pure (unit-tested) half of the OpenRouter image API;
   `gateways/falModels.ts` is the per-model fal request-spec map.
-- `util/mime.ts` `detectMedia` is **the** magic-byte detector: add formats there only. `util/http.ts` owns
-  retries (see Gotchas).
+- `util/mime.ts` `detectMedia` is **the** magic-byte detector: add formats there only (a video container
+  also needs its ffmpeg `demuxer` there, and its extension in `VIDEO_EXT`/`VIDEO_MIME`/`MEDIA_EXT`,
+  `util/inputs.ts`). `util/http.ts` owns retries (see Gotchas).
 - `bgremoval/models.ts` holds the model catalog and the one execution-provider resolution
   (`resolveExecutionProvider`/`plannedProviders`) shared by runtime, wizard and `health_status`.
 
@@ -84,7 +85,9 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
   tagged `_meta['ai-image-router/category']:'possibleCause'`, from the optional `Gateway.diagnoseFailure`
   (catch blocks `await` it with `.catch(() => [])`). No `structuredContent`, no custom content types.
 - **Never print a full API key** (hints use a masked `keyIdentifier`). HTTP failure logs carry response
-  bodies and URLs only, never auth headers or request bodies.
+  bodies and URLs only, never auth headers or request bodies. Keys sent to a provider load through
+  `resolveApiKey` (one printable-ASCII run, so a mis-pointed token file isn't sent); the HTTP auth secret
+  stays on `resolveToken`.
 - Media: save to `runtime.outputDir()` and return a `resource_link` plus a small inline preview (the default
   `filePath` mode never inlines video). `output_mode` is only `filePath|base64`: MCP has no raw-bytes channel.
 - **Handlers read `runtime.gateway`/`runtime.config` at call time**, never a value captured at registration.
@@ -137,10 +140,13 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
 
 ### fal.ai
 - Auth is `Authorization: Key <id>:<secret>`, not Bearer (the pair is one token). Use the
-  `status_url`/`response_url` fal returns verbatim; reconstructing them 404s for sub-path models.
+  `status_url`/`response_url` fal returns verbatim; reconstructing them 404s for sub-path models. The key
+  goes only to the queue origin (`isQueueUrl`).
 - A core-only resubmit happens only after a 422 (on submit or on the result), never after a submit 5xx or a
   poll failure, and is never silent (`warnings`). Put annotations in `GatewayHttpError.note`:
   `describeError` shows the provider message, not `err.message`.
+- An id that goes into a URL is shape-checked first (`FAL_ENDPOINT_SHAPE`, OpenRouter `MODEL_ID_SHAPE`);
+  server-returned ids are `encodeURIComponent`ed.
 - A job still running at the deadline is cancelled; a cancel answering `ALREADY_COMPLETED` means fetch the
   paid result. i2v sends one image: `image_last`/`reference_images` are refused before submitting.
 - Request shapes differ per model (`falModels.ts`; entry order matters). The per-model reference gate is
@@ -197,12 +203,15 @@ Configured "model" per gateway: Mistral = the **orchestrator LLM** (the image en
   `quantize`/`applyPalette` a fresh exact-length `Uint8Array` (they ignore `byteOffset`). Alpha is 1-bit,
   `palette` and `repeat` go on the first frame only, and `delay` is in ms. Detail: `docs/API-NOTES.md`.
 - **Tinify compress is format-preserving** (a "jpg → png" compress returned JPEG bytes): re-encode to PNG
-  first and check the output's magic bytes (`assertProduced`). Tinify only ingests png/jpeg/webp/avif.
+  first (`ensurePng`, by the bytes). `tinify.ts` alone decides what is uploaded and where the key goes.
 - sharp's default `fit` is `cover` (it crops), so downsizing uses `fit:'inside'`. ffmpeg mp4 output
   re-encodes audio to AAC (`-c:a copy` fails for PCM/Vorbis). ffmpeg/ffprobe on PATH are needed only for
   video work.
-- Magic bytes are authoritative: never trust a `content-type`, a data: URL's declared mime or a URL's file
-  extension (a saved `z-download-` copy takes its extension from the bytes). Raw base64 is
+- **ffmpeg only gets what `detectMedia` proves is a video, opened with that container's demuxer forced
+  (`-f`)**: by content it would pick HLS/DASH, which open the files a playlist names. So no video
+  signature may be one text can satisfy. Detail: `docs/API-NOTES.md`.
+- Magic bytes are authoritative: never trust a `content-type`, a declared mime (data: URL, provider label)
+  or a file extension (a saved `z-download-` copy takes its extension from the bytes). Raw base64 is
   recognised by content before the path heuristic (`/` is a base64 character). `sniffImageMime` defaults to
   png, so never validate with it (use `detectImageMime`). Generation is refused unless **all** reference
   images resolve.

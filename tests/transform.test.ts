@@ -9,16 +9,19 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { convertImage } from '../src/media/convert.js';
+import { TinifyError, tinifyCompress, tinifyConvert } from '../src/media/tinify.js';
 import { blackFraction, cropImage, downsizeImage, frameBlackFraction } from '../src/media/imageEdit.js';
 import { renderMediaContent } from '../src/tools/helpers.js';
 import { extractFrame, ffmpegAvailable, ffprobeDuration } from '../src/media/ffmpeg.js';
-import type { SavedFile } from '../src/util/files.js';
+import { ensurePng, type SavedFile } from '../src/util/files.js';
+import { runtime } from '../src/state/runtime.js';
+import { makeFakeGateway, startMcpHarness, textOf, type McpHarness } from './helpers/mcp.js';
 
 async function solidPng(r = 200, g = 120, b = 40): Promise<Buffer> {
   return sharp({ create: { width: 16, height: 16, channels: 3, background: { r, g, b } } }).png().toBuffer();
@@ -97,6 +100,123 @@ describe('convertImage with Tinify (stubbed API)', () => {
   });
 });
 
+/** Replace fetch with `answer`, recording every request (url + Authorization header). */
+function recordFetch(answer: (url: string, init?: RequestInit) => Response): { calls: { url: string; auth: string | undefined }[]; restore: () => void } {
+  const realFetch = globalThis.fetch;
+  const calls: { url: string; auth: string | undefined }[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
+    return answer(String(url), init);
+  }) as typeof fetch;
+  return { calls, restore: () => (globalThis.fetch = realFetch) };
+}
+
+describe('Tinify boundary (tinify.ts)', () => {
+  it('bytes that are not a PNG/JPEG/WebP/AVIF image are never uploaded', async () => {
+    const rec = recordFetch(() => new Response('{}', { status: 201, headers: { location: 'https://api.tinify.com/output/x' } }));
+    try {
+      const gif = await sharp(await solidPng()).gif().toBuffer();
+      for (const bytes of [Buffer.from('api_key=sk-secret\nother=1\n'), gif]) {
+        await assert.rejects(tinifyCompress('k', bytes, 'image/png'), (err: Error) => err instanceof TinifyError && /Not sent to Tinify/.test(err.message));
+        await assert.rejects(tinifyConvert('k', bytes, 'image/webp'), TinifyError);
+      }
+      assert.equal(rec.calls.length, 0, 'nothing may reach the network');
+    } finally {
+      rec.restore();
+    }
+  });
+
+  it('a result Location off api.tinify.com is refused, so the key is never sent there', async () => {
+    const rec = recordFetch((url) =>
+      url.endsWith('/shrink') ? new Response('{}', { status: 201, headers: { location: 'https://evil.example/output/x' } }) : new Response(Buffer.alloc(0)),
+    );
+    try {
+      await assert.rejects(tinifyCompress('k', await solidPng(), 'image/png'), /outside https:\/\/api\.tinify\.com/);
+      assert.deepEqual(
+        rec.calls.map((c) => c.url),
+        ['https://api.tinify.com/shrink'],
+      );
+    } finally {
+      rec.restore();
+    }
+  });
+
+  it('a relative Location resolves against api.tinify.com', async () => {
+    const png = await solidPng();
+    const rec = recordFetch((url) => (url.endsWith('/shrink') ? new Response('{}', { status: 201, headers: { location: '/output/x' } }) : new Response(png)));
+    try {
+      assert.equal(magic(await tinifyCompress('k', png, 'image/png')), 'png');
+      assert.equal(rec.calls[1]!.url, 'https://api.tinify.com/output/x');
+    } finally {
+      rec.restore();
+    }
+  });
+
+  it('compress refuses bytes that are not the type the caller will save, before anything is sent (a JPEG believed to be a PNG)', async () => {
+    const rec = recordFetch(() => new Response('{}', { status: 201, headers: { location: 'https://api.tinify.com/output/x' } }));
+    try {
+      const jpeg = await sharp(await solidPng()).jpeg().toBuffer();
+      await assert.rejects(
+        tinifyCompress('k', jpeg, 'image/png'),
+        (err: Error) => err instanceof TinifyError && err.status === null && /the input is image\/jpeg, not image\/png/.test(err.message),
+      );
+      assert.equal(rec.calls.length, 0, 'compress keeps the format, so the upload could never come back as a PNG');
+    } finally {
+      rec.restore();
+    }
+  });
+
+  it('a compress answer in another format than the upload is refused (it would be saved under the wrong type)', async () => {
+    const jpeg = await sharp(await solidPng()).jpeg().toBuffer();
+    const rec = recordFetch((url) => (url.endsWith('/shrink') ? new Response('{}', { status: 201, headers: { location: 'https://api.tinify.com/output/x' } }) : new Response(jpeg)));
+    try {
+      await assert.rejects(tinifyCompress('k', await solidPng(), 'image/png'), /compress returned image\/jpeg instead of image\/png/);
+    } finally {
+      rec.restore();
+    }
+  });
+});
+
+describe('an image whose declared type is wrong', () => {
+  let h: McpHarness;
+  let srcDir: string;
+  before(async () => {
+    srcDir = await mkdtemp(join(tmpdir(), 'air-mislabel-src-'));
+    h = await startMcpHarness({ gateway: makeFakeGateway(), clientName: 'mislabel-test', tmpPrefix: 'air-mislabel-' });
+  });
+  after(async () => {
+    await h.close();
+    await rm(srcDir, { recursive: true, force: true });
+  });
+
+  it('ensurePng goes by the bytes: a JPEG is re-encoded, a real PNG is returned untouched', async () => {
+    const png = await solidPng();
+    assert.equal(magic(await ensurePng(await sharp(png).jpeg().toBuffer())), 'png');
+    assert.equal(await ensurePng(png), png);
+  });
+
+  it('transform_media: a JPEG named photo.png, returned as base64 with Tinify on, is saved and labelled as the JPEG it is', async () => {
+    const photo = join(srcDir, 'photo.png');
+    await writeFile(photo, await sharp(await solidPng()).jpeg().toBuffer());
+    const rec = recordFetch(() => new Response('{}', { status: 201, headers: { location: 'https://api.tinify.com/output/x' } }));
+    runtime.tinifyToken = 'k';
+    try {
+      const r = await h.call('transform_media', { image: photo, output_mode: 'base64' });
+      assert.equal(r.isError, undefined, textOf(r));
+      assert.match(textOf(r), /Output: image\/jpeg/);
+      const saved = readdirSync(h.outDir);
+      assert.equal(saved.length, 1);
+      assert.match(saved[0]!, /\.jpg$/, 'never a .png holding JPEG bytes');
+      assert.equal(magic(await readFile(join(h.outDir, saved[0]!))), 'jpg');
+      assert.equal(r.content.find((c) => c.type === 'image')?.mimeType, 'image/jpeg');
+      assert.equal(rec.calls.length, 0, 'Tinify PNG compression does not apply to a JPEG');
+    } finally {
+      runtime.tinifyToken = null;
+      rec.restore();
+    }
+  });
+});
+
 describe('downsizeImage', () => {
   it('with BOTH width and height it fits inside the box (aspect kept) and never crops', async () => {
     const src = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#ffffff' } }).png().toBuffer();
@@ -111,6 +231,14 @@ describe('cropImage', () => {
     const src = await solidPng();
     const { width, height } = await sharp(src).metadata();
     await assert.rejects(cropImage(src, { left: width! - 2, top: 0, width: 10, height: 1 }), new RegExp(`exceeds the image bounds \\(${width}×${height}\\)`));
+  });
+});
+
+describe('an AVIF that is cropped or downsized', () => {
+  it('stays image/avif (sharp reports its format as "heif")', async () => {
+    const avif = await sharp({ create: { width: 16, height: 16, channels: 3, background: '#336699' } }).avif().toBuffer();
+    assert.equal((await cropImage(avif, { left: 0, top: 0, width: 8, height: 8 })).mimeType, 'image/avif');
+    assert.equal((await downsizeImage(avif, { width: 8 })).mimeType, 'image/avif');
   });
 });
 

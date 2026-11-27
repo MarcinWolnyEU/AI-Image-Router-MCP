@@ -11,11 +11,12 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
-import { ffmpegAvailable } from '../src/media/ffmpeg.js';
+import { ffmpegAvailable, withVideoFile } from '../src/media/ffmpeg.js';
 import { detectMedia } from '../src/util/mime.js';
 import { makeFakeGateway, startMcpHarness, textOf, uriToPath, type McpHarness } from './helpers/mcp.js';
 
@@ -107,5 +108,124 @@ describe('transform_media video', { skip: !hasFfmpeg && 'ffmpeg not installed' }
     const meta = await sharp(await readFile(out)).metadata();
     assert.equal(meta.format, 'png');
     assert.equal(meta.width, 64);
+  });
+});
+
+describe('ffmpeg temp input (no ffmpeg needed)', () => {
+  it('bytes no signature identifies are never written for ffmpeg, whatever mime they claim', async () => {
+    // An HLS playlist served as video/mp4: ffmpeg would pick its demuxer by content and follow it.
+    const playlist = Buffer.from('#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:10.0,\nfile:///etc/passwd\n#EXT-X-ENDLIST\n');
+    let called = false;
+    await assert.rejects(
+      withVideoFile({ kind: 'video', mimeType: 'video/mp4', bytes: playlist }, async () => {
+        called = true;
+      }),
+      /not a recognized video/,
+    );
+    assert.equal(called, false);
+  });
+
+  it('a LOCAL file is gated too: an HLS playlist named clip.mp4 is refused, a real container passes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'air-gate-'));
+    try {
+      const fake = join(dir, 'clip.mp4');
+      await writeFile(fake, '#EXTM3U\n#EXTINF:10.0,\nfile:///etc/passwd\n#EXT-X-ENDLIST\n');
+      let called = false;
+      await assert.rejects(
+        withVideoFile({ kind: 'video', mimeType: 'video/mp4', path: fake }, async () => {
+          called = true;
+        }),
+        /not a recognized video/,
+      );
+      assert.equal(called, false);
+      const real = join(dir, 'real.mkv');
+      await writeFile(real, Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.from('....matroska....')]));
+      assert.equal(await withVideoFile({ kind: 'video', mimeType: 'video/x-matroska', path: real }, async (m) => m.path), real);
+      // A file that can't be read is refused, never passed on unchecked (a locked file fails the same read).
+      const missing = join(dir, 'nope.mp4');
+      await assert.rejects(
+        withVideoFile({ kind: 'video', mimeType: 'video/mp4', path: missing }, async () => {
+          called = true;
+        }),
+        /ENOENT/,
+      );
+      assert.equal(called, false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a DASH manifest dressed as a QuickTime atom is refused, as bytes and as a local clip.mov', async () => {
+    // ffmpeg's DASH probe finds `<MPD` anywhere, and the demuxer opens the BaseURL (a local file or a URL).
+    const manifest = Buffer.from(
+      '<!--free--><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"><Period><AdaptationSet><Representation id="1" bandwidth="1"><BaseURL>C:/private/clip.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>\n',
+    );
+    const dir = await mkdtemp(join(tmpdir(), 'air-gate-'));
+    try {
+      const fake = join(dir, 'clip.mov');
+      await writeFile(fake, manifest);
+      let called = false;
+      const reached = async () => {
+        called = true;
+      };
+      await assert.rejects(withVideoFile({ kind: 'video', mimeType: 'video/quicktime', bytes: manifest }, reached), /not a recognized video/);
+      await assert.rejects(withVideoFile({ kind: 'video', mimeType: 'video/quicktime', path: fake }, reached), /not a recognized video/);
+      assert.equal(called, false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a recognized container is written under the extension its bytes prove, not the claimed one', async () => {
+    const ebml = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.from('....matroska....')]);
+    const seen = await withVideoFile({ kind: 'video', mimeType: 'video/mp4', bytes: ebml }, async (m) => ({ path: m.path, mime: m.mimeType, bytes: await readFile(m.path) }));
+    assert.match(seen.path, /input\.mkv$/);
+    assert.equal(seen.mime, 'video/x-matroska');
+    assert.deepEqual(seen.bytes, ebml);
+  });
+
+  it('names the demuxer its signature proves, which every ffmpeg run forces with -f', async () => {
+    const ebml = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.from('....matroska....')]);
+    const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x14]), Buffer.from('ftypisom'), Buffer.alloc(24)]);
+    const ogg = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(28)]);
+    for (const [bytes, demuxer] of [[ebml, 'matroska'], [mp4, 'mov'], [ogg, 'ogg']] as const) {
+      assert.equal(await withVideoFile({ kind: 'video', mimeType: 'video/mp4', bytes }, async (m) => m.demuxer), demuxer);
+    }
+  });
+
+  it('an image never reaches ffmpeg, even when it claims to be a video', async () => {
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#000' } }).png().toBuffer();
+    await assert.rejects(withVideoFile({ kind: 'video', mimeType: 'video/mp4', bytes: png }, async () => 'reached'), /not a recognized video/);
+  });
+});
+
+describe('transform_media video passthrough (no ffmpeg needed)', () => {
+  const mkvHeader = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x82, 0x84]), Buffer.from('matroska'), Buffer.alloc(32)]);
+
+  it('a local video in filePath mode is linked where it is, not read or copied', async () => {
+    const src = join(dir, 'passthrough.mkv');
+    await writeFile(src, mkvHeader);
+    const r = await call({ image: src });
+    assert.equal(r.isError, undefined, textOf(r));
+    const link = r.content.find((c) => c.type === 'resource_link')!;
+    assert.equal(link.uri, pathToFileURL(src).href);
+    assert.equal(link.mimeType, 'video/x-matroska');
+    assert.match(textOf(r), /\(unchanged\)/);
+  });
+
+  it('the container comes from the bytes: a webm named .mp4 is reported as webm', async () => {
+    const src = join(dir, 'really-webm.mp4');
+    await writeFile(src, Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x82, 0x84]), Buffer.from('webm'), Buffer.alloc(32)]));
+    const r = await call({ image: src, output_mode: 'base64' });
+    assert.equal(r.isError, undefined, textOf(r));
+    assert.match(textOf(r), /video\/webm/);
+    assert.match(r.content.find((c) => c.type === 'resource_link')?.name ?? textOf(r), /\.webm/);
+  });
+
+  it('bytes no signature identifies are refused, whatever mime they were declared with', async () => {
+    const playlist = Buffer.from('#EXTM3U\n#EXTINF:10.0,\nfile:///etc/passwd\n#EXT-X-ENDLIST\n');
+    const r = await call({ image: `data:video/mp4;base64,${playlist.toString('base64')}`, output_mode: 'base64' });
+    assert.equal(r.isError, true);
+    assert.match(textOf(r), /not a recognized video/);
   });
 });

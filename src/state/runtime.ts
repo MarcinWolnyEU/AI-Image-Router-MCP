@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AppConfig, loadConfig, resolveToken } from '../config/schema.js';
+import { AppConfig, loadConfig, resolveApiKey, resolveToken } from '../config/schema.js';
 import { CAPABILITY_CACHE_PATH, resolvePath, CONFIGURE_COMMAND } from '../config/paths.js';
 import { FileCapabilityCache } from './capabilityCache.js';
 import { Logger } from '../logging/logger.js';
@@ -83,7 +83,7 @@ export class Runtime {
    */
   private async applyConfig(cfg: AppConfig): Promise<void> {
     // ---- Phase 1: resolve (may throw, nothing live is touched yet) ----
-    const token = await resolveToken(cfg.token);
+    const token = await resolveApiKey(cfg.token);
     // A configured auth token that can't be resolved (or is empty) fails the whole
     // apply: falling back to "no auth" would silently expose the HTTP transport.
     const httpAuthToken = cfg.http.authToken ? await resolveToken(cfg.http.authToken) : null;
@@ -149,7 +149,7 @@ export class Runtime {
   private async resolveTinifyToken(cfg: AppConfig, logger: Logger): Promise<string | null> {
     if (!cfg.tinify) return null;
     try {
-      return await resolveToken(cfg.tinify.token);
+      return await resolveApiKey(cfg.tinify.token);
     } catch (err) {
       this.health.recordError('tinify-token', (err as Error).message);
       logger.warn('Tinify token could not be resolved; compression/WebP disabled', { error: (err as Error).message });

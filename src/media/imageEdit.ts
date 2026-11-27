@@ -1,9 +1,16 @@
 import sharp from 'sharp';
+import { detectImageMime } from '../util/mime.js';
 
 export interface EditedImage {
   bytes: Buffer;
   mimeType: string;
 }
+
+/**
+ * The mime of sharp's output, from its bytes. sharp's `info.format` names the libvips saver, so
+ * an AVIF comes back as `heif`, which would be saved as `.png` and labelled `image/heif`.
+ */
+const outputMime = (out: { data: Buffer; info: sharp.OutputInfo }): string => detectImageMime(out.data) ?? `image/${out.info.format}`;
 
 /**
  * Crop an exact pixel region (sharp .extract). Preserves the input format. A region that
@@ -23,7 +30,7 @@ export async function cropImage(
   const out = await sharp(input)
     .extract({ left: region.left, top: region.top, width: region.width, height: region.height })
     .toBuffer({ resolveWithObject: true });
-  return { bytes: out.data, mimeType: `image/${out.info.format}` };
+  return { bytes: out.data, mimeType: outputMime(out) };
 }
 
 /**
@@ -42,7 +49,7 @@ export async function downsizeImage(input: Buffer | string, dims: { width?: numb
       withoutEnlargement: true,
     })
     .toBuffer({ resolveWithObject: true });
-  return { bytes: out.data, mimeType: `image/${out.info.format}` };
+  return { bytes: out.data, mimeType: outputMime(out) };
 }
 
 /**

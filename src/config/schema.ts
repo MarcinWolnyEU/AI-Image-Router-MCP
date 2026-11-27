@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants as fsConstants, existsSync } from 'node:fs';
+import { mkdir, open, readFile, writeFile, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { CONFIG_PATH, CONFIGURE_COMMAND, resolvePath } from './paths.js';
@@ -214,7 +214,64 @@ export async function resolveToken(src: TokenSource): Promise<string> {
   }
   const p = resolvePath(src.value);
   if (!existsSync(p)) throw new ConfigError(`Token file not found: ${p}`);
-  const txt = (await readFile(p, 'utf8')).trim();
+  const txt = (await readTokenFile(p)).trim();
   if (!txt) throw new ConfigError(`Token file is empty: ${p}`);
   return txt;
+}
+
+/** A token file larger than this holds something else (the cap leaves room for a BOM, UTF-16 and padding). */
+const MAX_TOKEN_FILE_BYTES = 64 * 1024;
+
+/**
+ * A token file's text, read through one handle: only from a regular file, and never more than
+ * `MAX_TOKEN_FILE_BYTES`. A path pointed at a FIFO or a device (`/dev/urandom`) would otherwise
+ * block startup or read without end, and `stat().size` is 0 for both. `O_NONBLOCK` (POSIX only)
+ * keeps the open itself from waiting on a FIFO's writer.
+ */
+async function readTokenFile(p: string): Promise<string> {
+  let handle: FileHandle;
+  try {
+    handle = await open(p, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0));
+  } catch (err) {
+    throw new ConfigError(`Token file could not be read: ${p} (${(err as NodeJS.ErrnoException).code ?? (err as Error).message})`);
+  }
+  try {
+    if (!(await handle.stat()).isFile()) throw new ConfigError(`Token file is not a regular file: ${p}`);
+    const buf = Buffer.alloc(MAX_TOKEN_FILE_BYTES + 1);
+    const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+    if (bytesRead > MAX_TOKEN_FILE_BYTES) {
+      throw new ConfigError(`Token file is over ${MAX_TOKEN_FILE_BYTES / 1024} KiB, so it holds something other than a token: ${p}. It was not used; check the path.`);
+    }
+    return buf.toString('utf8', 0, bytesRead);
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+/** Longest API key accepted. Real keys are 32–1,000 characters; a longer value is a wrong file. */
+const MAX_API_KEY_LENGTH = 4096;
+
+/**
+ * The shape of an API key: one unbroken run of printable ASCII, with no whitespace, line breaks
+ * or non-ASCII characters. Every provider's keys fit (`sk-or-v1-…`, fal's `id:secret`, JWT-style keys).
+ */
+const API_KEY_SHAPE = /^[\x21-\x7e]+$/;
+
+/**
+ * Resolve a key that is sent to a third party (gateway or Tinify). On top of `resolveToken`,
+ * the value must have the shape of an API key, because it goes out (in an `Authorization`
+ * header): a token source pointing at the wrong file (a PEM key, a JSON config, notes) would
+ * otherwise send that file's contents to the provider. The error never echoes the value.
+ */
+export async function resolveApiKey(src: TokenSource): Promise<string> {
+  const key = await resolveToken(src);
+  if (key.length > MAX_API_KEY_LENGTH || !API_KEY_SHAPE.test(key)) throw notAKey(src);
+  return key;
+}
+
+function notAKey(src: TokenSource): ConfigError {
+  const where = src.type === 'file' ? `Token file ${resolvePath(src.value)}` : src.type === 'env' ? `Environment variable ${src.value}` : 'The inline token';
+  return new ConfigError(
+    `${where} does not hold a single API key (it has whitespace, line breaks or non-ASCII characters, or is over ${MAX_API_KEY_LENGTH} characters). It was not sent anywhere; put only the key in it.`,
+  );
 }

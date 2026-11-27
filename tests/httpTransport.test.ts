@@ -17,7 +17,15 @@ import { z } from 'zod';
 import { McpServer } from "@modelcontextprotocol/server";
 import { createHttpApp, type HttpApp } from '../src/http/app.js';
 
-const logger = { info() {}, warn() {}, error() {} };
+/** Every warn() the app logs, so a test can inspect what reached the log. */
+const warns: Array<{ msg: string; meta?: unknown }> = [];
+const logger = {
+  info() {},
+  warn(msg: string, meta?: unknown) {
+    warns.push({ msg, meta });
+  },
+  error() {},
+};
 let auth: string | null = null;
 let allowedHosts: string[] = [];
 let app: HttpApp;
@@ -37,13 +45,13 @@ interface Reply {
   body: string;
 }
 /** Send a request; `chunks` are written separately (to split a body at a chosen byte). */
-function send(opts: { method?: string; headers?: Record<string, string>; chunks?: Buffer[] }): Promise<Reply> {
+function send(opts: { path?: string; method?: string; headers?: Record<string, string>; chunks?: Buffer[] }): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = request(
       {
         host: '127.0.0.1',
         port,
-        path: '/mcp',
+        path: opts.path ?? '/mcp',
         method: opts.method ?? 'POST',
         headers: { accept: 'application/json, text/event-stream', 'content-type': 'application/json', ...opts.headers },
       },
@@ -136,6 +144,27 @@ describe('DNS-rebinding / cross-site guard (no auth token)', () => {
     assert.equal(ok.status, 200, ok.body);
     const bad = await send({ headers: { host: 'abc.trycloudflare.com', authorization: 'Bearer nope' }, chunks: json(INIT) });
     assert.equal(bad.status, 401);
+  });
+});
+
+describe('rejected-request log', () => {
+  it('records the path but never the query string (a client may put its secret there)', async () => {
+    auth = 's3cret';
+    warns.length = 0;
+    const r = await send({ path: '/mcp?token=LEAKME&api_key=LEAKME2', chunks: json(INIT) });
+    assert.equal(r.status, 401);
+    assert.equal(warns.length, 1);
+    assert.deepEqual((warns[0]!.meta as { path: string }).path, '/mcp');
+    assert.doesNotMatch(JSON.stringify(warns), /LEAKME|token=|api_key/);
+  });
+
+  it('nor a secret carried in a path segment after /mcp', async () => {
+    auth = 's3cret';
+    warns.length = 0;
+    const r = await send({ path: '/mcp/sk-LEAKME', chunks: json(INIT) });
+    assert.equal(r.status, 401);
+    assert.equal(warns.length, 1);
+    assert.doesNotMatch(JSON.stringify(warns), /LEAKME/);
   });
 });
 

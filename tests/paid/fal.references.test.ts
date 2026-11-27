@@ -13,19 +13,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { createGateway } from '../../src/gateways/registry.js';
 import type { Logger } from '../../src/logging/logger.js';
-import { DEFAULT_TOKEN_FILES } from '../../src/config/schema.js';
+import { DEFAULT_TOKEN_FILES, resolveApiKey } from '../../src/config/schema.js';
 import { buildFalImageInput } from '../../src/gateways/fal.js';
 import { resolveReferenceImages } from '../../src/util/inputs.js';
 
 const ROOT = process.cwd();
 const OUT_DIR = join(ROOT, 'output');
-const token = process.env.FAL_TOKEN ?? readFileSync(DEFAULT_TOKEN_FILES.fal, 'utf8').trim();
-if (!token) throw new Error('fal token missing; set FAL_TOKEN or create "fal ai token.txt"');
+// Fails fast (ConfigError) when neither FAL_TOKEN nor "fal ai token.txt" holds a key.
+const token = await resolveApiKey(process.env.FAL_TOKEN ? { type: 'env', value: 'FAL_TOKEN' } : { type: 'file', value: DEFAULT_TOKEN_FILES.fal });
 
 // The reference-capable fal image models (from the per-model spec map).
 const REF_MODELS = ['krea/v2/medium/text-to-image', 'krea/v2/large/text-to-image'];
